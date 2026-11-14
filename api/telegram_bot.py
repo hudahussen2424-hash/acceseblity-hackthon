@@ -48,6 +48,7 @@ logger = logging.getLogger("api.telegram_bot")
 
 
 def initialize_storage() -> None:
+    api_main.initialize()
     api_main.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with api_main.connect() as db:
         db.execute(
@@ -171,8 +172,21 @@ def jobs_reply() -> str:
         description = job.get("description", "")
         if title:
             entry = f"• {title}"
+            employer = job.get("employer")
+            location = job.get("location")
+            if isinstance(employer, str) and employer.strip():
+                entry += f"\n  {employer.strip()}"
+            if isinstance(location, str) and location.strip():
+                entry += f" — {location.strip()}"
+            if job.get("remote") is True:
+                entry += " (remote)"
+            elif job.get("remote") is False:
+                entry += " (on-site)"
             if isinstance(description, str) and description.strip():
                 entry += f"\n  {description.strip()}"
+            url = job.get("url")
+            if isinstance(url, str) and url.strip():
+                entry += f"\n  {source_link(url.strip())}"
             entries.append(entry)
     if not entries:
         return "No test jobs are listed yet."
@@ -197,9 +211,9 @@ def _person_reply(chat_id: int, language: str, username: str | None) -> str:
             else "አሁን ጥያቄዎን መመዝገብ አልቻልኩም። እባክዎ እንደገና ይሞክሩ።"
         )
     return (
-        "A tutor will reply here. It may take until morning."
+        "Your request is with a tutor. It may take until morning to reply."
         if language == "en"
-        else "አስተማሪ እዚህ ይመልሳል። እስከ ጠዋት ሊወስድ ይችላል።"
+        else "ጥያቄዎ ለአስተማሪ ተልኳል። መልሱ እስከ ጠዋት ሊወስድ ይችላል።"
     )
 
 

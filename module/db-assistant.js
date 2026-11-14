@@ -37,7 +37,16 @@
       sendEscalation: "Send to a person",
       voiceNote: "Voice note for tutor",
       escalationSent: "Your request was sent to a tutor.",
-      escalationFailed: "Your request could not be sent. Check your connection and try again."
+      escalationFailed: "Your request could not be sent. Check your connection and try again.",
+      accommodationButton: "I need an accommodation for my interview",
+      accommodationPrivacy: "Your accommodation choices and note go only to a tutor. They are never shared with an employer.",
+      whichJob: "Which test job is your interview for?",
+      whichAccommodation: "What accommodation would help?",
+      otherAccommodation: "Other (describe it in the note)",
+      accommodationNote: "Optional note",
+      sendAccommodation: "Ask a tutor about this accommodation",
+      accommodationSent: "Your request was sent privately to a tutor.",
+      accommodationFailed: "Your request could not be sent. Please try again."
     }
   };
 
@@ -75,7 +84,16 @@
       sendEscalation: "ለሰው ላክ",
       voiceNote: "ለአስተማሪ የድምፅ መልዕክት",
       escalationSent: "ጥያቄዎ ለአስተማሪ ተልኳል።",
-      escalationFailed: "ጥያቄዎ ሊላክ አልቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።"
+      escalationFailed: "ጥያቄዎ ሊላክ አልቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
+      accommodationButton: "ለቃለ መጠይቄ ማስተካከያ እፈልጋለሁ",
+      accommodationPrivacy: "የመረጡት ማስተካከያና ማስታወሻ ለአስተማሪ ብቻ ይሄዳሉ። ለቀጣሪ አይጋሩም።",
+      whichJob: "ቃለ መጠይቅዎ ለየትኛው የሙከራ ሥራ ነው?",
+      whichAccommodation: "ምን ማስተካከያ ይረዳዎታል?",
+      otherAccommodation: "ሌላ (በማስታወሻ ይግለጹ)",
+      accommodationNote: "አማራጭ ማስታወሻ",
+      sendAccommodation: "ስለዚህ ማስተካከያ አስተማሪን ይጠይቁ",
+      accommodationSent: "ጥያቄዎ በግል ለአስተማሪ ተልኳል።",
+      accommodationFailed: "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።"
     }
   };
 
@@ -120,6 +138,7 @@
       this._errorKey = "";
       this._messages = [];
       this._sections = [];
+      this._jobs = [];
       this._searchModule = null;
       this._recognition = null;
       this._voiceMode = "";
@@ -138,6 +157,15 @@
       this._bind();
       this._loadI18n();
       this._initSearchAndContent();
+    }
+
+    disconnectedCallback() {
+      try { this._recognition?.stop(); } catch { /* Recognition may already be closed. */ }
+      try { if (this._mediaRecorder?.state === "recording") this._mediaRecorder.stop(); } catch { /* Recorder may already be closed. */ }
+      for (const track of this._mediaStream?.getTracks?.() || []) track.stop();
+      this._mediaStream = null;
+      window.speechSynthesis?.cancel?.();
+      if (this._voiceObjectUrl) URL.revokeObjectURL(this._voiceObjectUrl);
     }
 
     attributeChangedCallback(name, oldValue, newValue) {
@@ -174,6 +202,50 @@
       } catch (err) {
         console.warn("Could not load content sections from", url, err);
       }
+      try {
+        const response = await fetch(new URL("../demo/data/jobs.json", scriptUrl));
+        if (!response.ok) throw new Error("Jobs source unavailable");
+        this._jobs = await response.json();
+        const jobSections = this._jobs.map((job) => ({
+          ...job,
+          type: "job",
+          title: job.title,
+          text: {
+            en: [job.description, job.remote ? "Remote work telecommute" : "On site work", job.location, ...(job.accommodations || [])].join(". "),
+            am: [job.description, job.remote ? "Remote work telecommute" : "On site work", job.location, ...(job.accommodations || [])].join(". ")
+          }
+        }));
+        this._sections = [...(Array.isArray(this._sections) ? this._sections.filter((item) => item.type !== "job") : []), ...jobSections];
+        this._populateAccommodationChoices();
+      } catch (err) {
+        console.warn("Could not load jobs source", err);
+      }
+    }
+
+    _populateAccommodationChoices() {
+      const jobSelect = this._els?.accommodationJob;
+      if (!jobSelect || !this._jobs.length) return;
+      const current = jobSelect.value;
+      jobSelect.replaceChildren();
+      for (const job of this._jobs) {
+        const option = document.createElement("option"); option.value = job.id; option.textContent = `${job.title} — ${job.location}`;
+        jobSelect.append(option);
+      }
+      if (this._jobs.some((job) => job.id === current)) jobSelect.value = current;
+      this._populateAccommodationOptions();
+    }
+
+    _populateAccommodationOptions() {
+      const job = this._jobs.find((item) => item.id === this._els.accommodationJob.value) || this._jobs[0];
+      const select = this._els.accommodationChoice;
+      if (!select) return;
+      const current = select.value;
+      select.replaceChildren();
+      for (const item of job?.accommodations || []) {
+        const option = document.createElement("option"); option.value = item; option.textContent = item; select.append(option);
+      }
+      const other = document.createElement("option"); other.value = "Other"; other.textContent = this._pack?.strings.otherAccommodation || "Other"; select.append(other);
+      if ([...select.options].some((option) => option.value === current)) select.value = current;
     }
 
     _render() {
@@ -194,6 +266,7 @@
           h2 { font-size: 20px; font-weight: 700; }
           .header-actions, .language { display: flex; flex-wrap: wrap; gap: 6px; }
           .person { grid-column: 1 / -1; justify-self: start; background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); }
+          .accommodation-open { grid-column: 1 / -1; justify-self: start; }
           .secondary { background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); border: 2px solid var(--assistant-primary, #002b56); }
           .language { align-items: center; }
           .language-label, label { font-weight: 700; }
@@ -238,6 +311,7 @@
               <h2 id="panel-title" tabindex="-1"></h2>
               <button type="button" class="secondary" id="close"></button>
               <button type="button" class="person" id="person"></button>
+              <button type="button" class="secondary accommodation-open" id="accommodation-open"></button>
             </header>
             <div class="language" aria-label="Language"><span class="language-label" id="language-label"></span>
               <button type="button" class="secondary" id="english" lang="en" aria-pressed="false">English</button>
@@ -258,6 +332,17 @@
               <div class="voice-note" id="voice-note" hidden><strong id="voice-note-label"></strong><audio id="voice-player" controls></audio></div>
               <button type="submit" id="send"></button>
             </form>
+            <form id="accommodation-form" class="escalation" novalidate hidden>
+              <p id="accommodation-privacy" role="note"></p>
+              <label for="accommodation-job" id="accommodation-job-label"></label>
+              <select id="accommodation-job" required></select>
+              <label for="accommodation-choice" id="accommodation-choice-label"></label>
+              <select id="accommodation-choice" required></select>
+              <label for="accommodation-note" id="accommodation-note-label"></label>
+              <textarea id="accommodation-note" rows="2" dir="auto"></textarea>
+              <p id="accommodation-status" class="error" role="status" aria-live="polite"></p>
+              <button type="submit" id="accommodation-send"></button>
+            </form>
             <form id="escalation" class="escalation" novalidate hidden>
               <label for="escalation-note" id="escalation-note-label"></label>
               <textarea id="escalation-note" name="note" rows="2" dir="auto"></textarea>
@@ -274,6 +359,7 @@
         title: $("panel-title"),
         close: $("close"),
         person: $("person"),
+        accommodationOpen: $("accommodation-open"),
         languageLabel: $("language-label"),
         english: $("english"),
         amharic: $("amharic"),
@@ -286,7 +372,12 @@
         send: $("send"), microphone: $("microphone"), stopVoice: $("stop-voice"), readBack: $("read-back"),
         voiceStatus: $("voice-status"), voiceNote: $("voice-note"), voiceNoteLabel: $("voice-note-label"), voicePlayer: $("voice-player"),
         escalation: $("escalation"), escalationNoteLabel: $("escalation-note-label"), escalationNote: $("escalation-note"),
-        consent: $("consent"), consentLabel: $("consent-label"), escalationStatus: $("escalation-status"), sendEscalation: $("send-escalation")
+        consent: $("consent"), consentLabel: $("consent-label"), escalationStatus: $("escalation-status"), sendEscalation: $("send-escalation"),
+        accommodationForm: $("accommodation-form"), accommodationPrivacy: $("accommodation-privacy"),
+        accommodationJobLabel: $("accommodation-job-label"), accommodationJob: $("accommodation-job"),
+        accommodationChoiceLabel: $("accommodation-choice-label"), accommodationChoice: $("accommodation-choice"),
+        accommodationNoteLabel: $("accommodation-note-label"), accommodationNote: $("accommodation-note"),
+        accommodationStatus: $("accommodation-status"), accommodationSend: $("accommodation-send")
       };
       this._applyTheme();
       this._renderMessages();
@@ -317,10 +408,13 @@
       e.english.addEventListener("click", () => this.setAttribute("lang", "en"));
       e.amharic.addEventListener("click", () => this.setAttribute("lang", "am"));
       e.person.addEventListener("click", () => this._openEscalation());
+      e.accommodationOpen.addEventListener("click", () => this._openAccommodation());
       e.microphone.addEventListener("click", () => this._startVoiceInput());
       e.stopVoice.addEventListener("click", () => this._stopVoice());
       e.readBack.addEventListener("click", () => this._speakText(e.input.value, this._pack.lang, null, e.voiceStatus));
       e.escalation.addEventListener("submit", (event) => this._submitEscalation(event));
+      e.accommodationForm.addEventListener("submit", (event) => this._submitAccommodation(event));
+      e.accommodationJob.addEventListener("change", () => this._populateAccommodationOptions());
       this.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && !e.panel.hidden) {
           event.preventDefault();
@@ -422,6 +516,7 @@
       if (persist) {
         this._messages.push({
           role: message.role || "user",
+          type: message.type || "lesson",
           text: message.text,
           lang: message.lang || this._pack?.lang || "en",
           linkUrl: message.linkUrl,
@@ -463,6 +558,7 @@
       write(e.title, "dialogTitle");
       write(e.close, "close");
       write(e.person, "person");
+      write(e.accommodationOpen, "accommodationButton");
       write(e.languageLabel, "language");
       write(e.greeting, "greeting");
       write(e.label, "questionLabel");
@@ -476,12 +572,18 @@
       write(e.escalationNoteLabel, "escalationNote");
       write(e.consentLabel, "consent");
       write(e.sendEscalation, "sendEscalation");
+      write(e.accommodationPrivacy, "accommodationPrivacy");
+      write(e.accommodationJobLabel, "whichJob");
+      write(e.accommodationChoiceLabel, "whichAccommodation");
+      write(e.accommodationNoteLabel, "accommodationNote");
+      write(e.accommodationSend, "sendAccommodation");
       e.input.lang = pack.lang;
       e.input.placeholder = s.questionPlaceholder || "";
       e.panel.lang = pack.lang;
       e.launcher.disabled = false;
       e.english.setAttribute("aria-pressed", pack.lang === "en");
       e.amharic.setAttribute("aria-pressed", pack.lang === "am");
+      this._populateAccommodationChoices();
       if (this._errorKey) this._setError(this._errorKey);
       this._renderMessages();
       this._emit("ready", { lang: pack.lang, dir: this.dir });
@@ -544,6 +646,27 @@
         : { best: null, others: [] };
 
       // 3. Process result
+      const allMatches = searchResult.best
+        ? [searchResult.best, ...(searchResult.others || [])]
+        : (searchResult.others || []);
+      const threshold = this._searchModule?.THRESHOLD || 0.25;
+      const matchingJobs = allMatches.filter((item) => item.section?.type === "job" && item.score >= threshold).slice(0, 5);
+      if (matchingJobs.length) {
+        for (const match of matchingJobs) {
+          const job = match.section;
+          const detail = [
+            `${job.employer} · ${job.location} · ${job.remote ? "Remote" : "On site"}`,
+            job.description,
+            `Accommodations: ${(job.accommodations || []).join(", ")}`
+          ].join("\n");
+          this._appendMessage({
+            role: "assistant", type: "job", text: `${job.title}\n${detail}`, lang: currentLang,
+            linkUrl: job.url, linkTitle: job.title, sectionId: job.id, score: match.score
+          });
+        }
+        return;
+      }
+
       if (searchResult.best) {
         const bestSection = searchResult.best.section;
         const score = searchResult.best.score;
@@ -623,8 +746,12 @@
           this._els.input.dispatchEvent(new Event("input", { bubbles: true }));
           this._els.readBack.hidden = false;
           this._els.voiceStatus.textContent = this._pack.strings.speechAdded;
+          this._finishRecognition();
+        } else {
+          this._recognition = null;
+          this._setVoiceState(false);
+          this._startVoiceRecorder();
         }
-        this._finishRecognition();
       };
       recognition.onerror = () => {
         if (this._recognition !== recognition) return;
@@ -750,18 +877,20 @@
 
     async _playAmharicAudio(sectionId, statusNode) {
       const url = new URL(`./audio/${encodeURIComponent(sectionId)}.am.mp3`, scriptUrl);
-      try {
-        const response = await fetch(url, { method: "HEAD" });
-        if (!response.ok) return;
-        const audio = new Audio(url.href);
-        await audio.play();
-      } catch { /* Keep the explicit no-voice message visible. */ }
+      const audio = new Audio(url.href);
+      audio.play().catch(() => { /* Keep the explicit no-voice message visible. */ });
     }
 
     _openEscalation() {
       this._els.escalation.hidden = false;
       this._els.escalationNote.focus();
       this._emit("person", {});
+    }
+
+    _openAccommodation() {
+      this._els.accommodationForm.hidden = false;
+      this._populateAccommodationChoices();
+      this._els.accommodationJob.focus();
     }
 
     _blobAsDataUrl(blob) {
@@ -776,17 +905,17 @@
     async _submitEscalation(event) {
       event.preventDefault();
       const e = this._els;
-      const conversation = e.consent.checked ? this._messages : [];
-      const payload = {
-        conversation,
-        language: this._pack.lang,
-        page: location.href,
-        note: e.escalationNote.value.trim()
-      };
-      if (this._voiceBlob) {
-        payload.audio = { mimeType: this._voiceBlob.type || "audio/webm", dataUrl: await this._blobAsDataUrl(this._voiceBlob) };
-      }
       try {
+        const conversation = e.consent.checked ? this._messages : [];
+        const payload = {
+          conversation,
+          language: this._pack.lang,
+          page: location.href,
+          note: e.escalationNote.value.trim()
+        };
+        if (this._voiceBlob) {
+          payload.audio = { mimeType: this._voiceBlob.type || "audio/webm", dataUrl: await this._blobAsDataUrl(this._voiceBlob) };
+        }
         const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
         const response = await fetch(`${base}/api/v1/escalations`, {
           method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
@@ -802,6 +931,38 @@
         e.voicePlayer.removeAttribute("src");
       } catch {
         e.escalationStatus.textContent = this._pack.strings.escalationFailed;
+      }
+    }
+
+    async _submitAccommodation(event) {
+      event.preventDefault();
+      const e = this._els;
+      const job = this._jobs.find((item) => item.id === e.accommodationJob.value);
+      if (!job || !e.accommodationChoice.value) {
+        e.accommodationStatus.textContent = this._pack.strings.accommodationFailed;
+        return;
+      }
+      try {
+        const payload = {
+          type: "accommodation",
+          jobId: job.id,
+          accommodation: e.accommodationChoice.value,
+          conversation: [],
+          language: this._pack.lang,
+          page: location.href,
+          note: e.accommodationNote.value.trim()
+        };
+        const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+        const response = await fetch(`${base}/api/v1/escalations`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error("Escalation send failed");
+        const result = await response.json();
+        e.accommodationStatus.textContent = this._pack.strings.accommodationSent;
+        this._emit("escalated", { ticketId: result.ticketId, type: "accommodation" });
+        e.accommodationNote.value = "";
+      } catch {
+        e.accommodationStatus.textContent = this._pack.strings.accommodationFailed;
       }
     }
 

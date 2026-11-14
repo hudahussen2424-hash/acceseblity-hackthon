@@ -47,6 +47,28 @@ def test_person_ticket_contains_recent_chat(monkeypatch, tmp_path):
     assert "123" in row["note"]
 
 
+def test_regular_message_uses_shared_answer_pipeline(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "DB_PATH", tmp_path / "bot.sqlite3")
+    telegram_bot.initialize_storage()
+    calls = []
+
+    async def answer_question(question, language, sections):
+        calls.append((question, language, sections))
+        return {
+            "answer": "Use a clear process.",
+            "sources": [{"title": "Working well", "url": "lesson.html#work"}],
+        }
+
+    monkeypatch.setattr(telegram_bot, "answer_question", answer_question)
+    monkeypatch.setattr(telegram_bot, "indexed_sections", lambda: [{"id": "test"}])
+
+    response = telegram_bot.handle_text(123, "How should I work?")
+
+    assert calls == [("How should I work?", "en", [{"id": "test"}])]
+    assert "Source:" in response
+    assert response.endswith("lesson.html#work")
+
+
 def test_answers_include_absolute_source_and_not_found_offers_person(monkeypatch):
     result = {
         "answer": "Use a clear process.",
@@ -64,13 +86,26 @@ def test_answers_include_absolute_source_and_not_found_offers_person(monkeypatch
 
 
 def test_jobs_command_reads_json_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "DB_PATH", tmp_path / "bot.sqlite3")
+    telegram_bot.initialize_storage()
     jobs_file = tmp_path / "jobs.json"
     jobs_file.write_text(
-        json.dumps([{"title": "Test listing", "description": "Practice task."}]),
+        json.dumps([{
+            "title": "Test listing",
+            "employer": "Demo team",
+            "location": "Remote",
+            "remote": True,
+            "description": "Practice task.",
+            "url": "/savanna/pages/jobs.html#test-listing",
+        }]),
         encoding="utf-8",
     )
     monkeypatch.setattr(telegram_bot, "JOBS_FILE", jobs_file)
 
     response = telegram_bot.handle_text(123, "/jobs")
     assert "Test listing" in response
+    assert "Demo team — Remote (remote)" in response
     assert "Practice task." in response
+    expected_url = "https://github.com/hudahussen2424-hash/"
+    expected_url += "acceseblity-hackthon/blob/main/savanna/pages/jobs.html#test-listing"
+    assert expected_url in response

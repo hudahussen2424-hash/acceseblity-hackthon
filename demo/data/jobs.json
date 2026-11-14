@@ -1,14 +1,82 @@
 [
   {
-    "title": "Test job: Inbox organization",
-    "description": "Practice sorting a sample inbox and drafting short replies."
+    "id": "test-inbox-support",
+    "title": "Inbox Support Assistant (TEST)",
+    "employer": "Test Studio 01",
+    "location": "Nairobi, Kenya",
+    "remote": true,
+    "description": "Practice sorting a sample inbox, flagging urgent messages, and drafting short replies for review.",
+    "accommodations": ["interpreter for interviews", "flexible hours"],
+    "url": "/savanna/pages/jobs.html#test-inbox-support"
   },
   {
-    "title": "Test job: Spreadsheet cleanup",
-    "description": "Practice organizing and checking a sample contact spreadsheet."
+    "id": "test-spreadsheet-helper",
+    "title": "Spreadsheet Helper (TEST)",
+    "employer": "Test Workshop 02",
+    "location": "Addis Ababa, Ethiopia",
+    "remote": false,
+    "description": "Clean a practice spreadsheet by checking dates, removing duplicate sample rows, and labeling columns.",
+    "accommodations": ["screen reader friendly tools", "flexible hours"],
+    "url": "/savanna/pages/jobs.html#test-spreadsheet-helper"
   },
   {
-    "title": "Test job: Meeting coordination",
-    "description": "Practice preparing a sample schedule and meeting notes."
+    "id": "test-calendar-coordinator",
+    "title": "Calendar Coordinator (TEST)",
+    "employer": "Practice Office 03",
+    "location": "Kampala, Uganda",
+    "remote": true,
+    "description": "Organize a sample weekly calendar and prepare clear meeting reminders using a practice schedule.",
+    "accommodations": ["interpreter for interviews", "extra time for interview tasks"],
+    "url": "/savanna/pages/jobs.html#test-calendar-coordinator"
+  },
+  {
+    "id": "test-customer-replies",
+    "title": "Customer Reply Assistant (TEST)",
+    "employer": "Sample Service Group 04",
+    "location": "Dar es Salaam, Tanzania",
+    "remote": true,
+    "description": "Sort example customer questions and write polite draft replies from a short information sheet.",
+    "accommodations": ["screen reader friendly tools", "interpreter for interviews"],
+    "url": "/savanna/pages/jobs.html#test-customer-replies"
+  },
+  {
+    "id": "test-research-organizer",
+    "title": "Research Organizer (TEST)",
+    "employer": "Training Desk 05",
+    "location": "Kigali, Rwanda",
+    "remote": false,
+    "description": "Put supplied public practice links into a table and summarize each source in one plain sentence.",
+    "accommodations": ["flexible hours", "written interview questions"],
+    "url": "/savanna/pages/jobs.html#test-research-organizer"
+  },
+  {
+    "id": "test-content-checker",
+    "title": "Content Checker (TEST)",
+    "employer": "Learning Sandbox 06",
+    "location": "Mombasa, Kenya",
+    "remote": true,
+    "description": "Review sample web copy for missing headings, unclear sentences, and simple spelling mistakes.",
+    "accommodations": ["screen reader friendly tools", "extra time for interview tasks"],
+    "url": "/savanna/pages/jobs.html#test-content-checker"
+  },
+  {
+    "id": "test-project-notes",
+    "title": "Project Notes Assistant (TEST)",
+    "employer": "Demo Project Room 07",
+    "location": "Arusha, Tanzania",
+    "remote": false,
+    "description": "Turn a practice meeting transcript into a short list of decisions, tasks, and due dates.",
+    "accommodations": ["interpreter for interviews", "flexible hours", "written interview questions"],
+    "url": "/savanna/pages/jobs.html#test-project-notes"
+  },
+  {
+    "id": "test-file-organizer",
+    "title": "Digital File Organizer (TEST)",
+    "employer": "Example Skills Lab 08",
+    "location": "Remote, East Africa",
+    "remote": true,
+    "description": "Arrange a set of practice documents into named folders and write a clear index for the sample files.",
+    "accommodations": ["screen reader friendly tools", "flexible hours"],
+    "url": "/savanna/pages/jobs.html#test-file-organizer"
   }
 ]

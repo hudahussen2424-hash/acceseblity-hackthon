@@ -32,6 +32,15 @@
     "sendEscalation": "ለሰው ላክ",
     "voiceNote": "ለአስተማሪ የድምፅ መልዕክት",
     "escalationSent": "ጥያቄዎ ለአስተማሪ ተልኳል።",
-    "escalationFailed": "ጥያቄዎ ሊላክ አልቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።"
+    "escalationFailed": "ጥያቄዎ ሊላክ አልቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
+    "accommodationButton": "ለቃለ መጠይቄ ማስተካከያ እፈልጋለሁ",
+    "accommodationPrivacy": "የመረጡት ማስተካከያና ማስታወሻ ለአስተማሪ ብቻ ይሄዳሉ። ለቀጣሪ አይጋሩም።",
+    "whichJob": "ቃለ መጠይቅዎ ለየትኛው የሙከራ ሥራ ነው?",
+    "whichAccommodation": "ምን ማስተካከያ ይረዳዎታል?",
+    "otherAccommodation": "ሌላ (በማስታወሻ ይግለጹ)",
+    "accommodationNote": "አማራጭ ማስታወሻ",
+    "sendAccommodation": "ስለዚህ ማስተካከያ አስተማሪን ይጠይቁ",
+    "accommodationSent": "ጥያቄዎ በግል ለአስተማሪ ተልኳል።",
+    "accommodationFailed": "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።"
   }
 }

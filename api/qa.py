@@ -14,7 +14,10 @@ SENSITIVE_REFUSAL = "I can’t help with medical, legal, or immigration advice. 
 async def answer_question(question: str, language: str, sections: list[dict], provider=None) -> dict:
     ranked = retrieve(question, sections, language)
     best_score, best = ranked[0] if ranked else (0.0, None)
-    sources = [{"title": section["title"], "url": section["url"]} for _, section in ranked[:2]]
+    sources = [
+        {"title": section["title"], "url": section["url"], "type": section.get("type", "lesson")}
+        for _, section in ranked[:2]
+    ]
     if sensitive_topic(question):
         return {"answer": SENSITIVE_REFUSAL, "sources": sources, "mode": "search", "score": best_score}
 

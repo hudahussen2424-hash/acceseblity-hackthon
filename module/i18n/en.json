@@ -32,6 +32,15 @@
     "sendEscalation": "Send to a person",
     "voiceNote": "Voice note for tutor",
     "escalationSent": "Your request was sent to a tutor.",
-    "escalationFailed": "Your request could not be sent. Check your connection and try again."
+    "escalationFailed": "Your request could not be sent. Check your connection and try again.",
+    "accommodationButton": "I need an accommodation for my interview",
+    "accommodationPrivacy": "Your accommodation choices and note go only to a tutor. They are never shared with an employer.",
+    "whichJob": "Which test job is your interview for?",
+    "whichAccommodation": "What accommodation would help?",
+    "otherAccommodation": "Other (describe it in the note)",
+    "accommodationNote": "Optional note",
+    "sendAccommodation": "Ask a tutor about this accommodation",
+    "accommodationSent": "Your request was sent privately to a tutor.",
+    "accommodationFailed": "Your request could not be sent. Please try again."
   }
 }

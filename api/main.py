@@ -1,10 +1,12 @@
 """Small SQLite backed escalation API and tutor queue."""
 from __future__ import annotations
 
-import json
 import base64
 import binascii
+import hashlib
+import json
 import os
+import re
 import sqlite3
 import urllib.request
 from datetime import datetime, timezone
@@ -13,7 +15,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .qa import answer_question
@@ -36,6 +38,101 @@ load_env_file()
 DB_PATH = Path(os.getenv("ESCALATIONS_DB", ROOT / "escalations.sqlite3"))
 app = FastAPI(title="Learning assistant escalations")
 
+ETHIOPIC_RANGE = re.compile(r"[\u1200-\u137F]")
+
+SECTION_SHORT_CODES = {
+    "what-is-shaping-the-future-of-va-work": "Course s1",
+    "artificial-intelligence-and-the-future-of-va-work": "Course s2",
+    "what-clients-are-likely-to-value-more-and-more": "Course s3",
+    "what-this-means-for-aspiring-virtual-assistants": "Course s4",
+    "so-is-the-future-of-va-promising": "Course s5",
+}
+
+
+JOBS_FILE = ROOT.parent / "demo" / "data" / "jobs.json"
+
+
+def get_job_titles(lang: str = "en", limit: int = 3) -> list[str]:
+    if JOBS_FILE.exists():
+        try:
+            data = json.loads(JOBS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                titles = []
+                for item in data:
+                    if isinstance(item, dict) and item.get("title"):
+                        titles.append(str(item["title"]))
+                    if len(titles) == limit:
+                        break
+                if titles:
+                    return titles
+        except Exception:
+            pass
+
+    with connect() as db:
+        rows = db.execute("SELECT title_en, title_am FROM jobs LIMIT ?", (limit,)).fetchall()
+        if rows:
+            return [row["title_am"] if lang == "am" else row["title_en"] for row in rows]
+
+    return ["Executive VA", "Social Media Assistant", "Customer Support VA"]
+
+
+def hash_phone(phone: str | None) -> str:
+    if not phone:
+        return ""
+    normalized = re.sub(r"[^\d]", "", str(phone))
+    if not normalized:
+        normalized = str(phone).strip()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    if not phone:
+        return ""
+    normalized = re.sub(r"[^\d]", "", str(phone))
+    if not normalized:
+        normalized = str(phone).strip()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def detect_language(text: str) -> str:
+    return "am" if ETHIOPIC_RANGE.search(text) else "en"
+
+
+def get_source_short_code(source: dict[str, Any], sections: list[dict[str, Any]]) -> str:
+    url = str(source.get("url") or "")
+    anchor = url.split("#")[-1] if "#" in url else ""
+    if anchor in SECTION_SHORT_CODES:
+        return SECTION_SHORT_CODES[anchor]
+
+    match = re.search(r"(?:section|s)[-_]?(\d+)", url, re.IGNORECASE)
+    if match:
+        return f"Course s{match.group(1)}"
+
+    for idx, s in enumerate(sections):
+        if s.get("url") == url or s.get("id") == anchor:
+            return f"Course s{idx + 1}"
+
+    return "Course s1"
+
+
+def format_sms_message(body: str, source_code: str | None = None) -> str:
+    body = re.sub(r"\s+", " ", body).strip()
+    suffix = f" ({source_code})" if source_code else ""
+    budget = 160 - len(suffix)
+    if budget <= 0:
+        return (body + suffix)[:160]
+
+    if len(body) <= budget:
+        return f"{body}{suffix}"
+
+    truncated = body[:budget].rstrip()
+    last_space = truncated.rfind(" ")
+    if last_space > 0:
+        truncated = truncated[:last_space].rstrip()
+
+    if len(truncated) + 3 <= budget:
+        truncated = f"{truncated}..."
+
+    result = f"{truncated}{suffix}"
+    return result[:160]
+
 
 def connect() -> sqlite3.Connection:
     db = sqlite3.connect(DB_PATH)
@@ -57,6 +154,26 @@ def initialize() -> None:
         db.execute("""CREATE TABLE IF NOT EXISTS content_sections (
             id TEXT PRIMARY KEY, section_json TEXT NOT NULL
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS sms_alerts (
+            phone_hash TEXT PRIMARY KEY,
+            active INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
+        )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS jobs (
+            id TEXT PRIMARY KEY,
+            title_en TEXT NOT NULL,
+            title_am TEXT NOT NULL
+        )""")
+        count_jobs = db.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+        if count_jobs == 0:
+            db.executemany(
+                "INSERT INTO jobs (id, title_en, title_am) VALUES (?, ?, ?)",
+                [
+                    ("1", "Executive VA", "አስፈፃሚ ቨርቹዋል ረዳት"),
+                    ("2", "Social Media Assistant", "የማህበራዊ ሚዲያ ረዳት"),
+                    ("3", "Customer Support VA", "የደንበኞች አገልግሎት ረዳት"),
+                ],
+            )
         count = db.execute("SELECT COUNT(*) FROM content_sections").fetchone()[0]
         seed_file = ROOT.parent / "demo" / "data" / "content.json"
         if count == 0 and seed_file.exists():
@@ -162,6 +279,91 @@ async def ask(payload: dict[str, Any]) -> dict[str, Any]:
     return await answer_question(question.strip(), language, indexed_sections())
 
 
+@app.post("/sms/inbound", response_class=PlainTextResponse)
+async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTextResponse:
+    try:
+        payload = await request.json()
+    except Exception:
+        return PlainTextResponse("Send valid JSON with a text message.", status_code=400)
+
+    if not isinstance(payload, dict):
+        return PlainTextResponse("Send a JSON object with a text message.", status_code=400)
+
+    raw_text = payload.get("text")
+    if not isinstance(raw_text, str) or not raw_text.strip():
+        return PlainTextResponse("Send a text message.", status_code=400)
+
+    text = raw_text.strip()
+    from_number = str(payload.get("from") or "").strip()
+    phone_hash = hash_phone(from_number)
+    lang = detect_language(text)
+    cmd = text.upper()
+
+    # Command: PERSON opens an escalation
+    if cmd == "PERSON":
+        ticket_id = save_escalation_record(
+            conversation=[{"from": "user", "text": "PERSON"}],
+            language=lang,
+            page=f"sms:{phone_hash}" if phone_hash else "sms",
+            note=f"SMS escalation from {phone_hash}" if phone_hash else "SMS escalation",
+        )
+        background.add_task(notify_webhook, ticket_id, {"page": f"sms:{phone_hash}" if phone_hash else "sms"})
+        reply = (
+            "የመምህር እርዳታ ተጠይቋል። መምህር በቅርቡ መልስ ይሰጥዎታል።"
+            if lang == "am"
+            else "A tutor will answer here. It may take until morning."
+        )
+        return PlainTextResponse(reply, media_type="text/plain")
+
+    # Command: JOBS lists up to 3 job titles
+    if cmd == "JOBS":
+        job_titles = get_job_titles(lang=lang, limit=3)
+        prefix = "ክፍት የሥራ ቦታዎች: " if lang == "am" else "Jobs: "
+        reply = prefix + " ".join(f"{i+1}. {t}" for i, t in enumerate(job_titles))
+        return PlainTextResponse(format_sms_message(reply), media_type="text/plain")
+
+    # Command: ALERT ON / ALERT OFF / ALERT toggles job alerts for that number
+    if cmd in ("ALERT ON", "ALERT OFF", "ALERT"):
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with connect() as db:
+            if cmd == "ALERT ON":
+                active = 1
+            elif cmd == "ALERT OFF":
+                active = 0
+            else:
+                row = db.execute("SELECT active FROM sms_alerts WHERE phone_hash = ?", (phone_hash,)).fetchone()
+                active = 0 if row and row["active"] == 1 else 1
+
+            if phone_hash:
+                db.execute(
+                    "INSERT OR REPLACE INTO sms_alerts(phone_hash, active, updated_at) VALUES(?, ?, ?)",
+                    (phone_hash, active, now_iso),
+                )
+
+        if active == 1:
+            reply = "የሥራ ማሳወቂያ በርቷል።" if lang == "am" else "Job alerts turned on."
+        else:
+            reply = "የሥራ ማሳወቂያ ጠፍቷል።" if lang == "am" else "Job alerts turned off."
+        return PlainTextResponse(reply, media_type="text/plain")
+
+    # Normal question: run answer pipeline
+    sections = indexed_sections()
+    result = await answer_question(text, lang, sections)
+    answer = result.get("answer", "")
+    sources = result.get("sources", [])
+
+    source_code = None
+    if sources and answer not in (
+        "I could not find this in the course.",
+        "ይህንን በትምህርቱ ውስጥ ማግኘት አልቻልኩም።",
+        "I can’t help with medical, legal, or immigration advice. Please talk to a tutor."
+    ):
+        source_code = get_source_short_code(sources[0], sections)
+
+    formatted = format_sms_message(answer, source_code)
+    return PlainTextResponse(formatted, media_type="text/plain")
+
+
 def ticket_dict(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "ticketId": row["id"], "conversation": json.loads(row["conversation"]),
@@ -220,7 +422,6 @@ def get_escalation(ticket_id: str) -> dict[str, Any]:
     if row is None:
         raise HTTPException(status_code=404, detail="We could not find that ticket.")
     result = ticket_dict(row)
-    # Learner polling only needs the reply and status; helper data stays private.
     return {"ticketId": result["ticketId"], "reply": result["reply"], "status": result["status"], "language": result["language"]}
 
 
