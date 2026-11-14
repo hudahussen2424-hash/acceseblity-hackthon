@@ -25,6 +25,10 @@
       topicBlocked: "ስለ ጤና፣ ሕግ ወይም ኢሚግሬሽን ምክር መስጠት አልችልም። ከሰው ጋር መነጋገር ይችላሉ።", tutor: "አስተማሪ"
     } }
   };
+  const topicFallback = {
+    en: ["medical", "medicine", "doctor", "diagnosis", "symptom", "treatment", "prescription", "legal", "lawyer", "law", "lawsuit", "court", "immigration", "visa", "asylum", "deportation", "green card"],
+    am: ["ሕክምና", "ሐኪም", "ምርመራ", "ምልክት", "መድኃኒት", "ሕግ", "ጠበቃ", "ፍርድ ቤት", "ኢሚግሬሽን", "ቪዛ", "ጥገኝነት", "መባረር"]
+  };
 
   class DbAssistant extends HTMLElement {
     static get observedAttributes() { return ["lang", "api", "content", "theme"]; }
@@ -204,7 +208,7 @@
     }
     async _isSensitive(text) {
       if (!this._topics) await this._loadTopics();
-      const words = [...(this._topics?.en || []), ...(this._topics?.am || [])];
+      const words = [...(this._topics?.en || topicFallback.en), ...(this._topics?.am || topicFallback.am)];
       return words.some((word) => word && text.toLocaleLowerCase().includes(word.toLocaleLowerCase()));
     }
     _showEscalation() { this._els.escalation.hidden = false; this._els.note.focus(); this._emit("person", {}); }

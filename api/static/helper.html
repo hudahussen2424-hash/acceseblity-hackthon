@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tutor escalation inbox</title>
+  <style>
+    :root { color-scheme: light; font: 1rem/1.5 system-ui, sans-serif; color: #17202a; background: #f4f6f8; }
+    body { margin: 0 auto; max-width: 56rem; padding: 1rem; }
+    h1, h2, p { margin-block: 0 .75rem; }
+    label { display: block; font-weight: 700; margin-block: .75rem .25rem; }
+    input, textarea, button { box-sizing: border-box; font: inherit; }
+    input, textarea { width: 100%; padding: .65rem; border: 2px solid #364152; border-radius: .25rem; }
+    button { min-height: 44px; padding: .5rem 1rem; color: white; background: #123e67; border: 2px solid #123e67; border-radius: .25rem; cursor: pointer; }
+    :focus-visible { outline: 3px solid #b04a00; outline-offset: 2px; }
+    .toolbar, .actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+    .toolbar label { flex: 1 1 20rem; }
+    #status { min-height: 1.5em; }
+    #tickets { display: grid; gap: 1rem; padding: 0; list-style: none; }
+    .ticket { padding: 1rem; border: 1px solid #8995a3; border-radius: .5rem; background: white; overflow-wrap: anywhere; }
+    .conversation { padding-inline-start: 1.25rem; }
+    .conversation li { margin-block: .5rem; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Tutor escalation inbox</h1>
+    <p>Waiting learner requests and their shared conversation appear here.</p>
+    <div class="toolbar">
+      <label for="token">Helper token<input id="token" type="password" autocomplete="current-password" required></label>
+      <button type="button" id="refresh">Load waiting requests</button>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <ul id="tickets" aria-label="Waiting learner requests"></ul>
+  </main>
+  <script>
+    const tokenField = document.getElementById("token");
+    const status = document.getElementById("status");
+    const list = document.getElementById("tickets");
+    const authHeaders = () => ({ "X-Helper-Token": tokenField.value });
+
+    async function loadTickets() {
+      list.replaceChildren();
+      status.textContent = "Loading waiting requests…";
+      try {
+        const response = await fetch("/api/v1/escalations", { headers: authHeaders() });
+        if (!response.ok) throw new Error(response.status === 401 ? "Enter a valid helper token." : "Requests could not be loaded.");
+        const tickets = await response.json();
+        status.textContent = tickets.length ? `${tickets.length} waiting request${tickets.length === 1 ? "" : "s"}.` : "No waiting requests.";
+        for (const ticket of tickets) list.append(makeTicket(ticket));
+      } catch (error) { status.textContent = error.message; }
+    }
+
+    function makeTicket(ticket) {
+      const item = document.createElement("li"); item.className = "ticket";
+      const title = document.createElement("h2"); title.textContent = `Request ${ticket.ticketId}`; item.append(title);
+      const meta = document.createElement("p"); meta.textContent = `Language: ${ticket.language} · Page: ${ticket.page}`; item.append(meta);
+      if (ticket.note) { const note = document.createElement("p"); note.textContent = `Learner note: ${ticket.note}`; item.append(note); }
+      const conversationTitle = document.createElement("h3"); conversationTitle.textContent = "Shared conversation"; item.append(conversationTitle);
+      const conversation = document.createElement("ul"); conversation.className = "conversation";
+      for (const message of ticket.conversation) {
+        const line = document.createElement("li"); line.dir = "auto"; line.lang = message.lang === "am" ? "am" : "en";
+        line.textContent = typeof message === "string" ? message : message.text; conversation.append(line);
+      }
+      if (!ticket.conversation.length) { const empty = document.createElement("li"); empty.textContent = "The learner did not share the conversation."; conversation.append(empty); }
+      item.append(conversation);
+      const label = document.createElement("label"); label.htmlFor = `reply-${ticket.ticketId}`; label.textContent = "Reply to learner";
+      const box = document.createElement("textarea"); box.id = `reply-${ticket.ticketId}`; box.rows = 4; box.required = true; box.dir = "auto";
+      const actions = document.createElement("div"); actions.className = "actions";
+      const send = document.createElement("button"); send.type = "button"; send.textContent = "Send reply";
+      const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "Delete request";
+      const feedback = document.createElement("p"); feedback.setAttribute("role", "status"); feedback.setAttribute("aria-live", "polite");
+      send.addEventListener("click", async () => {
+        if (!box.value.trim()) { feedback.textContent = "Write a reply first."; box.focus(); return; }
+        send.disabled = true;
+        try {
+          const response = await fetch(`/api/v1/escalations/${encodeURIComponent(ticket.ticketId)}/reply`, {
+            method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" }, body: JSON.stringify({ text: box.value })
+          });
+          if (!response.ok) throw new Error((await response.json()).detail || "Reply could not be saved.");
+          feedback.textContent = "Reply sent. The learner can see it the next time they open chat.";
+          item.remove(); status.textContent = "Reply saved. Refresh to load the remaining requests.";
+        } catch (error) { feedback.textContent = error.message; send.disabled = false; }
+      });
+      remove.addEventListener("click", async () => {
+        if (!window.confirm("Delete this request?")) return;
+        try {
+          const response = await fetch(`/api/v1/escalations/${encodeURIComponent(ticket.ticketId)}`, { method: "DELETE", headers: authHeaders() });
+          if (!response.ok) throw new Error("Request could not be deleted.");
+          item.remove(); status.textContent = "Request deleted.";
+        } catch (error) { feedback.textContent = error.message; }
+      });
+      actions.append(send, remove); item.append(label, box, actions, feedback); return item;
+    }
+
+    document.getElementById("refresh").addEventListener("click", loadTickets);
+  </script>
+</body>
+</html>
