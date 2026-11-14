@@ -15,7 +15,6 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parent
-DB_PATH = Path(os.getenv("ESCALATIONS_DB", ROOT / "escalations.sqlite3"))
 
 
 def load_env_file() -> None:
@@ -30,6 +29,7 @@ def load_env_file() -> None:
 
 
 load_env_file()
+DB_PATH = Path(os.getenv("ESCALATIONS_DB", ROOT / "escalations.sqlite3"))
 app = FastAPI(title="Learning assistant escalations")
 
 
