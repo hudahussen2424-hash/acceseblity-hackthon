@@ -14,6 +14,8 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .qa import answer_question
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -47,6 +49,22 @@ def initialize() -> None:
             page TEXT NOT NULL, note TEXT NOT NULL, reply TEXT, created_at TEXT NOT NULL,
             replied_at TEXT, status TEXT NOT NULL DEFAULT 'waiting'
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS content_sections (
+            id TEXT PRIMARY KEY, section_json TEXT NOT NULL
+        )""")
+        count = db.execute("SELECT COUNT(*) FROM content_sections").fetchone()[0]
+        seed_file = ROOT.parent / "demo" / "data" / "content.json"
+        if count == 0 and seed_file.exists():
+            try:
+                sections = json.loads(seed_file.read_text(encoding="utf-8"))
+                if isinstance(sections, list):
+                    db.executemany(
+                        "INSERT OR REPLACE INTO content_sections(id,section_json) VALUES(?,?)",
+                        [(str(section.get("id", uuid4())), json.dumps(section, ensure_ascii=False))
+                         for section in sections if isinstance(section, dict)],
+                    )
+            except (OSError, ValueError):
+                pass
 
 
 initialize()
@@ -73,6 +91,53 @@ def notify_webhook(ticket_id: str, payload: dict[str, Any]) -> None:
     except Exception:
         # A failed notification must not undo a saved learner ticket.
         pass
+
+
+def indexed_sections() -> list[dict[str, Any]]:
+    with connect() as db:
+        rows = db.execute("SELECT section_json FROM content_sections ORDER BY rowid").fetchall()
+    return [json.loads(row["section_json"]) for row in rows]
+
+
+@app.post("/api/v1/content")
+def index_content(payload: Any) -> dict[str, int]:
+    sections = payload.get("sections") if isinstance(payload, dict) else payload
+    if not isinstance(sections, list) or len(sections) > 5000:
+        plain_bad("Send a list of up to 5000 course sections.")
+    rows = []
+    for section in sections:
+        if not isinstance(section, dict):
+            plain_bad("Each course section must be an object.")
+        section_id = section.get("id")
+        title, url, text = section.get("title"), section.get("url", ""), section.get("text")
+        if not isinstance(section_id, str) or not section_id.strip():
+            plain_bad("Each course section needs an id.")
+        if not isinstance(title, str) or not title.strip() or not isinstance(url, str):
+            plain_bad("Each course section needs a title and a text URL.")
+        if not isinstance(text, (str, dict)):
+            plain_bad("Each course section needs text.")
+        if isinstance(text, dict) and any(not isinstance(value, str) for value in text.values()):
+            plain_bad("Translated course text must be words in each language field.")
+        normalized = {"id": section_id.strip(), "title": title.strip(), "url": url, "text": text}
+        rows.append((normalized["id"], json.dumps(normalized, ensure_ascii=False)))
+    with connect() as db:
+        db.executemany("INSERT OR REPLACE INTO content_sections(id,section_json) VALUES(?,?)", rows)
+    return {"indexed": len(rows)}
+
+
+@app.get("/api/v1/content")
+def get_content() -> list[dict[str, Any]]:
+    return indexed_sections()
+
+
+@app.post("/api/v1/ask")
+async def ask(payload: dict[str, Any]) -> dict[str, Any]:
+    question, language = payload.get("question"), payload.get("language", "en")
+    if not isinstance(question, str) or not question.strip() or len(question) > 4000:
+        plain_bad("Write a question of 1 to 4000 characters.")
+    if language not in ("en", "am"):
+        plain_bad("Language must be en or am.")
+    return await answer_question(question.strip(), language, indexed_sections())
 
 
 def ticket_dict(row: sqlite3.Row) -> dict[str, Any]:
@@ -155,3 +220,5 @@ def helper_page() -> FileResponse:
 
 
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+app.mount("/module", StaticFiles(directory=ROOT.parent / "module"), name="module")
+app.mount("/demo", StaticFiles(directory=ROOT.parent / "demo", html=True), name="demo")
