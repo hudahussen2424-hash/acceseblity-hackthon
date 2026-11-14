@@ -408,7 +408,7 @@
           :host([theme="dark"]) textarea::placeholder { color: #cbd5e1; }
           #send { background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); }
           @media (max-width: 480px) {
-            .panel { inset-inline: 0; inset-block-end: 0; width: 100%; max-height: 80vh; border-radius: 8px 8px 0 0; padding: 12px; }
+            .panel { inset-inline: 0; inset-block-end: 0; width: 100%; max-height: min(70vh, calc(100vh - 10rem)); border-radius: 8px 8px 0 0; padding: 12px; }
             .log { max-height: 24vh; }
             .launcher { inset-inline-end: 12px; inset-block-end: 12px; }
           }

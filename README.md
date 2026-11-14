@@ -193,7 +193,7 @@ Not finished: LTI integration, a production WebRTC relay/STUN/TURN setup, a prod
 
 ## Libraries and their licences (list every library and licence)
 
-These are the direct third-party dependencies declared in the repository manifests; versions are ranges and there is no lockfile pinning the transitive dependency set.
+These are the direct third-party dependencies declared in the repository manifests. `package-lock.json` pins the npm dependency tree; Python dependency versions are not lockfile-pinned.
 
 - FastAPI — MIT License.
 - Uvicorn (including its `standard` extras) — BSD 3-Clause License.
