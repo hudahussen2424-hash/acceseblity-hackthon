@@ -212,15 +212,17 @@
       return words.some((word) => word && text.toLocaleLowerCase().includes(word.toLocaleLowerCase()));
     }
     _showEscalation() { this._els.escalation.hidden = false; this._els.note.focus(); this._emit("person", {}); }
-    _api(path) { const base = (this.getAttribute("api") || "").replace(/\/$/, ""); return `${base}${path}`; }
+    _api(path) { const base = (this.getAttribute("api") || location.origin).replace(/\/$/, ""); return `${base}${path}`; }
     _conversation() { return this._els.consent.checked ? this._messages.slice() : []; }
     async _submitEscalation(event) {
       event.preventDefault();
       const payload = { conversation: this._conversation(), language: this._pack.lang, page: location.href, note: this._els.note.value.trim() };
-      if (!this.getAttribute("api")) { this._els.escalationStatus.textContent = "Escalation is unavailable right now."; return; }
       if (!navigator.onLine) { this._queue(payload); return; }
       try { await this._postEscalation(payload); }
-      catch { this._queue(payload); }
+      catch (error) {
+        if (error.status && error.status < 500) this._els.escalationStatus.textContent = error.message;
+        else this._queue(payload);
+      }
     }
     _queue(payload) {
       const queue = this._saved("queue", []); queue.push(payload); this._store("queue", queue);
@@ -228,7 +230,11 @@
     }
     async _postEscalation(payload) {
       const response = await fetch(this._api("/api/v1/escalations"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!response.ok) throw new Error("Escalation could not be sent");
+      if (!response.ok) {
+        let message = "Escalation could not be sent.";
+        try { message = (await response.json()).detail || message; } catch { /* Use the plain fallback message. */ }
+        const error = new Error(message); error.status = response.status; throw error;
+      }
       const result = await response.json();
       if (!result.ticketId) throw new Error("Missing ticket id");
       const tickets = this._saved("tickets", []); tickets.push({ id: result.ticketId, replied: false }); this._store("tickets", tickets);
@@ -238,14 +244,14 @@
       this._emit("escalated", { ticketId: result.ticketId });
     }
     async _sendQueued() {
-      if (!navigator.onLine || !this.getAttribute("api")) return;
+      if (!navigator.onLine) return;
       const queue = this._saved("queue", []); if (!queue.length) return;
       const remaining = [];
       for (const payload of queue) { try { await this._postEscalation(payload); } catch { remaining.push(payload); } }
       this._store("queue", remaining);
     }
     async _checkTickets() {
-      if (!navigator.onLine || !this.getAttribute("api")) return;
+      if (!navigator.onLine) return;
       const tickets = this._saved("tickets", []); let changed = false;
       for (const ticket of tickets) {
         if (ticket.replied) continue;
