@@ -47,6 +47,22 @@
       sendAccommodation: "Ask a tutor about this accommodation",
       accommodationSent: "Your request was sent privately to a tutor.",
       accommodationFailed: "Your request could not be sent. Please try again.",
+      screenShareConsent: "I consent to sharing my screen or page details with a tutor. Sharing starts only after I press a button. Live video is not recorded or stored; page details and any selected screenshot are attached to a tutor request.",
+      screenShareNote: "Desktop uses a direct demo WebRTC connection; some networks may block it. Android Chrome sends page details and an optional image only, not live video.",
+      screenShareStart: "Share my screen",
+      screenContextStart: "Show my tutor where I am",
+      screenScreenshot: "Optional screenshot (image)",
+      screenShareOn: "You are sharing your screen",
+      screenShareStop: "Stop sharing",
+      screenShareConsentRequired: "Please consent before sharing.",
+      screenShareStarting: "Requesting screen access…",
+      screenShareConnecting: "Waiting for the tutor to connect (demo transport).",
+      screenShareConnected: "Connected to the tutor. Live video is not recorded.",
+      screenShareStopped: "Screen sharing stopped.",
+      screenShareCancelled: "Screen sharing was cancelled.",
+      screenShareError: "Screen sharing could not start. Please try again.",
+      screenContextSent: "Page details were sent to the tutor. This did not share your live screen.",
+      screenScreenshotTooLarge: "Choose an image smaller than 3 MB.",
       describeOther: "Describe the accommodation you need in the note."
     }
   };
@@ -95,6 +111,22 @@
       sendAccommodation: "ስለዚህ ማስተካከያ አስተማሪን ይጠይቁ",
       accommodationSent: "ጥያቄዎ በግል ለአስተማሪ ተልኳል።",
       accommodationFailed: "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።",
+      screenShareConsent: "ማያዬን ወይም የገጹን መረጃ ለአስተማሪ ለማጋራት እስማማለሁ። ማጋራት የሚጀምረው አዝራሩን ከጫንኩ ብቻ ነው። ቀጥታ ቪዲዮ አይቀዳም ወይም አይቀመጥም፤ የገጽ መረጃና የመረጡት ምስል ከአስተማሪ ጥያቄ ጋር ይቀመጣሉ።",
+      screenShareNote: "ዴስክቶፕ ቀጥታ የሙከራ WebRTC ግንኙነት ይጠቀማል፤ አንዳንድ ኔትወርኮች ሊከለክሉት ይችላሉ። Android Chrome የገጽ መረጃና አማራጭ ምስል ብቻ ይልካል፤ ቀጥታ ቪዲዮ አይደለም።",
+      screenShareStart: "ማያዬን አጋራ",
+      screenContextStart: "ያለሁበትን ለአስተማሪ አሳይ",
+      screenScreenshot: "አማራጭ የማያ ምስል",
+      screenShareOn: "ማያዎን እያጋሩ ነው",
+      screenShareStop: "ማጋራትን አቁም",
+      screenShareConsentRequired: "ከማጋራትዎ በፊት ፈቃድዎን ይስጡ።",
+      screenShareStarting: "የማያ ፈቃድ በመጠየቅ ላይ…",
+      screenShareConnecting: "አስተማሪው እስኪገናኝ በመጠበቅ ላይ (የሙከራ ማስተላለፊያ)።",
+      screenShareConnected: "ከአስተማሪው ጋር ተገናኝቷል። ቀጥታ ቪዲዮ አይቀዳም።",
+      screenShareStopped: "የማያ ማጋራት ቆሟል።",
+      screenShareCancelled: "የማያ ማጋራት ተሰርዟል።",
+      screenShareError: "የማያ ማጋራት መጀመር አልቻለም። እንደገና ይሞክሩ።",
+      screenContextSent: "የገጹ መረጃ ለአስተማሪ ተልኳል። ቀጥታ ማያዎን አላጋራም።",
+      screenScreenshotTooLarge: "ከ3 ሜባ ያነሰ ምስል ይምረጡ።",
       describeOther: "በማስታወሻው የሚፈልጉትን ማስተካከያ ይግለጹ።"
     }
   };
@@ -148,6 +180,11 @@
       this._voiceObjectUrl = "";
       this._ignoreRecognitionEnd = false;
       this._voiceGeneration = 0;
+      this._screenStream = null;
+      this._screenPeer = null;
+      this._screenTicketId = "";
+      this._screenShareGeneration = 0;
+      this._screenShareStarting = false;
     }
 
     connectedCallback() {
@@ -162,6 +199,7 @@
     }
 
     disconnectedCallback() {
+      this._stopScreenShare(false);
       try { this._recognition?.stop(); } catch { /* Recognition may already be closed. */ }
       try { if (this._mediaRecorder?.state === "recording") this._mediaRecorder.stop(); } catch { /* Recorder may already be closed. */ }
       for (const track of this._mediaStream?.getTracks?.() || []) track.stop();
@@ -293,6 +331,12 @@
           .escalation[hidden], [hidden] { display: none !important; }
           .consent { display: flex; align-items: flex-start; gap: 8px; }
           .consent input { width: 20px; height: 20px; flex: none; margin: 2px 0 0; }
+          .screen-share { display: flex; flex-direction: column; gap: 8px; border: 1px solid #94a3b8; border-radius: 6px; padding: 10px; }
+          .screen-share h3 { margin: 0; font-size: 1rem; }
+          .screen-share input[type="file"] { max-width: 100%; min-height: 44px; }
+          .screen-share-bar { position: fixed; z-index: 2147483647; inset-block-start: 8px; inset-inline: 8px; margin-inline: auto; max-width: 36rem; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 2px solid #14532d; border-radius: 6px; background: #ecfdf5; color: #14532d; font-weight: 700; box-shadow: 0 2px 8px #0005; }
+          .screen-share-bar[hidden] { display: none !important; }
+          .screen-share-bar button { flex: none; color: #fff; background: #7f1d1d; border: 2px solid #7f1d1d; }
           .voice-button[aria-pressed="true"] { background: #7f1d1d; color: #fff; border-color: #7f1d1d; }
           form, .field { display: flex; flex-direction: column; gap: 8px; }
           select { min-height: 44px; padding: 8px 12px; font: inherit; color: var(--assistant-foreground, #1a1a1a); background: var(--assistant-background, #fff); border: 2px solid var(--assistant-foreground, #1a1a1a); border-radius: 4px; }
@@ -351,11 +395,27 @@
               <label for="escalation-note" id="escalation-note-label"></label>
               <textarea id="escalation-note" name="note" rows="2" dir="auto"></textarea>
               <label class="consent" for="consent"><input id="consent" type="checkbox"><span id="consent-label"></span></label>
+              <section class="screen-share" aria-labelledby="screen-share-title">
+                <h3 id="screen-share-title"></h3>
+                <p id="screen-share-note" role="note"></p>
+                <label class="consent" for="screen-share-consent"><input id="screen-share-consent" type="checkbox"><span id="screen-share-consent-label"></span></label>
+                <button type="button" class="secondary" id="screen-share-start" hidden></button>
+                <label for="screen-screenshot" id="screen-screenshot-label" hidden></label>
+                <input id="screen-screenshot" type="file" accept="image/*" hidden>
+                <button type="button" class="secondary" id="screen-context-start" hidden></button>
+                <p id="screen-share-status" class="error" role="status" aria-live="polite"></p>
+              </section>
               <p id="escalation-status" class="error" role="status" aria-live="polite"></p>
               <button type="submit" id="send-escalation"></button>
             </form>
           </div>
-        </section>`;
+        </section>
+        <div id="screen-share-bar" class="screen-share-bar" role="status" aria-live="polite" aria-atomic="true" hidden>
+          <span id="screen-share-bar-text"></span>
+          <button type="button" id="screen-share-stop"></button>
+        </div>`;
+      const screenCaptureAvailable = typeof navigator !== "undefined" &&
+        typeof navigator.mediaDevices?.getDisplayMedia === "function";
       const $ = (id) => this.shadowRoot.getElementById(id);
       this._els = {
         launcher: $("launcher"),
@@ -377,12 +437,22 @@
         voiceStatus: $("voice-status"), voiceNote: $("voice-note"), voiceNoteLabel: $("voice-note-label"), voicePlayer: $("voice-player"),
         escalation: $("escalation"), escalationNoteLabel: $("escalation-note-label"), escalationNote: $("escalation-note"),
         consent: $("consent"), consentLabel: $("consent-label"), escalationStatus: $("escalation-status"), sendEscalation: $("send-escalation"),
+        screenShareTitle: $("screen-share-title"), screenShareNote: $("screen-share-note"),
+        screenShareConsent: $("screen-share-consent"), screenShareConsentLabel: $("screen-share-consent-label"),
+        screenShareStart: $("screen-share-start"), screenScreenshotLabel: $("screen-screenshot-label"),
+        screenScreenshot: $("screen-screenshot"), screenContextStart: $("screen-context-start"),
+        screenShareStatus: $("screen-share-status"), screenShareBar: $("screen-share-bar"),
+        screenShareBarText: $("screen-share-bar-text"), screenShareStop: $("screen-share-stop"),
         accommodationForm: $("accommodation-form"), accommodationPrivacy: $("accommodation-privacy"),
         accommodationJobLabel: $("accommodation-job-label"), accommodationJob: $("accommodation-job"),
         accommodationChoiceLabel: $("accommodation-choice-label"), accommodationChoice: $("accommodation-choice"),
         accommodationNoteLabel: $("accommodation-note-label"), accommodationNote: $("accommodation-note"),
         accommodationStatus: $("accommodation-status"), accommodationSend: $("accommodation-send")
       };
+      this._els.screenShareStart.hidden = !screenCaptureAvailable;
+      this._els.screenContextStart.hidden = screenCaptureAvailable;
+      this._els.screenScreenshotLabel.hidden = screenCaptureAvailable;
+      this._els.screenScreenshot.hidden = screenCaptureAvailable;
       this._applyTheme();
       this._renderMessages();
     }

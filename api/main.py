@@ -10,13 +10,17 @@ import re
 import sqlite3
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from cryptography.fernet import Fernet, InvalidToken
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
+try:
+    from cryptography.fernet import Fernet, InvalidToken
+except ImportError:
+    Fernet = None
+    InvalidToken = Exception
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -117,12 +121,6 @@ def decrypt_sms_phone(ciphertext: str) -> str | None:
         return cipher.decrypt(ciphertext.encode("ascii")).decode("utf-8")
     except (InvalidToken, ValueError, UnicodeDecodeError):
         return None
-    if not phone:
-        return ""
-    normalized = re.sub(r"[^\d]", "", str(phone))
-    if not normalized:
-        normalized = str(phone).strip()
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def detect_language(text: str) -> str:
@@ -211,15 +209,26 @@ def initialize() -> None:
         db.execute("""CREATE TABLE IF NOT EXISTS escalations (
             id TEXT PRIMARY KEY, conversation TEXT NOT NULL, language TEXT NOT NULL,
             page TEXT NOT NULL, note TEXT NOT NULL, audio_json TEXT, type TEXT NOT NULL DEFAULT 'person',
-            job_id TEXT, accommodation TEXT, reply TEXT, created_at TEXT NOT NULL,
+            job_id TEXT, accommodation TEXT, screen_context_json TEXT, reply TEXT, created_at TEXT NOT NULL,
             replied_at TEXT, status TEXT NOT NULL DEFAULT 'waiting'
         )""")
         columns = {row[1] for row in db.execute("PRAGMA table_info(escalations)")}
         if "audio_json" not in columns:
             db.execute("ALTER TABLE escalations ADD COLUMN audio_json TEXT")
-        for column, definition in (("type", "TEXT NOT NULL DEFAULT 'person'"), ("job_id", "TEXT"), ("accommodation", "TEXT")):
+        for column, definition in (
+            ("type", "TEXT NOT NULL DEFAULT 'person'"),
+            ("job_id", "TEXT"),
+            ("accommodation", "TEXT"),
+            ("screen_context_json", "TEXT"),
+        ):
             if column not in columns:
                 db.execute(f"ALTER TABLE escalations ADD COLUMN {column} {definition}")
+        db.execute("""CREATE TABLE IF NOT EXISTS escalation_signals (
+            ticket_id TEXT NOT NULL, signal_type TEXT NOT NULL, sdp TEXT NOT NULL,
+            created_at TEXT NOT NULL, PRIMARY KEY(ticket_id, signal_type)
+        )""")
+        signal_expiry = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+        db.execute("DELETE FROM escalation_signals WHERE created_at < ?", (signal_expiry,))
         db.execute("""CREATE TABLE IF NOT EXISTS content_sections (
             id TEXT PRIMARY KEY, section_json TEXT NOT NULL
         )""")
@@ -319,13 +328,14 @@ def save_escalation_record(
     conversation: list[dict[str, Any]], language: str, page: str, note: str,
     audio_json: str | None = None, ticket_type: str = "person",
     job_id: str | None = None, accommodation: str | None = None,
+    screen_context_json: str | None = None,
 ) -> str:
     ticket_id = str(uuid4())
     created = datetime.now(timezone.utc).isoformat()
     with connect() as db:
         db.execute(
-            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, ticket_type, job_id, accommodation, created),
+            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,screen_context_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, ticket_type, job_id, accommodation, screen_context_json, created),
         )
     return ticket_id
 
@@ -492,6 +502,7 @@ def ticket_dict(row: sqlite3.Row) -> dict[str, Any]:
         "reply": row["reply"], "status": row["status"], "createdAt": row["created_at"],
         "audio": json.loads(row["audio_json"]) if row["audio_json"] else None,
         "type": row["type"], "jobId": row["job_id"], "accommodation": row["accommodation"],
+        "screenContext": json.loads(row["screen_context_json"]) if row["screen_context_json"] else None,
     }
 
 
@@ -512,11 +523,59 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
     audio = payload.get("audio")
     ticket_type = payload.get("type", "person")
     job_id, accommodation = payload.get("jobId"), payload.get("accommodation")
-    if ticket_type not in ("person", "accommodation"):
-        plain_bad("Ticket type must be person or accommodation.")
+    if ticket_type not in ("person", "accommodation", "screen-share", "screen-context"):
+        plain_bad("Ticket type is not supported.")
     if ticket_type == "accommodation":
         if not isinstance(job_id, str) or not job_id.strip() or not isinstance(accommodation, str) or not accommodation.strip():
             plain_bad("Choose a job and the accommodation you need.")
+    screen_context = payload.get("screenContext")
+    screen_context_json = None
+    if ticket_type == "screen-context":
+        if not isinstance(screen_context, dict):
+            plain_bad("Page context must be an object.")
+        page_url = screen_context.get("pageUrl")
+        accessible_name = screen_context.get("focusedAccessibleName", "")
+        outer_html = screen_context.get("focusedOuterHTML", "")
+        headings = screen_context.get("headings", [])
+        if not isinstance(page_url, str) or len(page_url) > 2048:
+            plain_bad("Page context needs a valid page URL.")
+        if not isinstance(accessible_name, str) or len(accessible_name) > 500:
+            plain_bad("Focused accessible name must be 500 characters or fewer.")
+        if not isinstance(outer_html, str) or len(outer_html) > 500:
+            plain_bad("Focused element HTML must be 500 characters or fewer.")
+        if not isinstance(headings, list) or len(headings) > 20 or any(
+            not isinstance(heading, str) or len(heading) > 300 for heading in headings
+        ):
+            plain_bad("Page headings must be a list of up to 20 short strings.")
+        normalized_context: dict[str, Any] = {
+            "pageUrl": page_url,
+            "focusedAccessibleName": accessible_name,
+            "focusedOuterHTML": outer_html,
+            "headings": headings,
+            "screenshot": None,
+        }
+        screenshot = screen_context.get("screenshot")
+        if screenshot is not None:
+            if (
+                not isinstance(screenshot, dict)
+                or screenshot.get("mimeType") not in {"image/jpeg", "image/png", "image/webp", "image/gif"}
+                or not isinstance(screenshot.get("dataUrl"), str)
+            ):
+                plain_bad("Screenshot must be a supported image.")
+            mime_type = screenshot["mimeType"]
+            data_url = screenshot["dataUrl"]
+            if len(data_url) > 4_100_000 or not data_url.startswith(f"data:{mime_type};base64,"):
+                plain_bad("Screenshot must be smaller than 3 MB.")
+            try:
+                decoded_image = base64.b64decode(data_url.split(",", 1)[1], validate=True)
+            except (binascii.Error, ValueError):
+                plain_bad("Screenshot data is not valid.")
+            if len(decoded_image) > 3_000_000:
+                plain_bad("Screenshot must be smaller than 3 MB.")
+            normalized_context["screenshot"] = {"mimeType": mime_type, "dataUrl": data_url}
+        screen_context_json = json.dumps(normalized_context, ensure_ascii=False)
+    elif screen_context is not None:
+        plain_bad("Page context is only allowed on a screen-context ticket.")
     audio_json = None
     if audio is not None:
         if not isinstance(audio, dict) or not isinstance(audio.get("mimeType"), str) or not isinstance(audio.get("dataUrl"), str):
@@ -535,6 +594,7 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
         conversation, language, page, note, audio_json, ticket_type,
         job_id.strip() if isinstance(job_id, str) else None,
         accommodation.strip() if isinstance(accommodation, str) else None,
+        screen_context_json,
     )
     background.add_task(notify_webhook, ticket_id, {"page": page})
     return {"ticketId": ticket_id}
@@ -556,6 +616,71 @@ def get_escalation(ticket_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="We could not find that ticket.")
     result = ticket_dict(row)
     return {"ticketId": result["ticketId"], "reply": result["reply"], "status": result["status"], "language": result["language"]}
+
+
+@app.post("/api/v1/escalations/{ticket_id}/signal")
+def post_escalation_signal(
+    ticket_id: str,
+    payload: dict[str, Any],
+    x_helper_token: str | None = Header(default=None),
+) -> dict[str, bool]:
+    signal_type, sdp = payload.get("type"), payload.get("sdp")
+    if signal_type not in ("offer", "answer"):
+        plain_bad("Signal type must be offer or answer.")
+    if signal_type == "answer":
+        helper_auth(x_helper_token)
+    if not isinstance(sdp, str) or not sdp.strip() or len(sdp) > 200_000:
+        plain_bad("A valid WebRTC session description is required.")
+    with connect() as db:
+        ticket = db.execute(
+            "SELECT type FROM escalations WHERE id=?", (ticket_id,)
+        ).fetchone()
+        if ticket is None:
+            raise HTTPException(status_code=404, detail="We could not find that ticket.")
+        if ticket["type"] != "screen-share":
+            plain_bad("Screen signaling is only available for screen-share tickets.")
+        db.execute(
+            "INSERT INTO escalation_signals(ticket_id, signal_type, sdp, created_at) "
+            "VALUES(?, ?, ?, ?) ON CONFLICT(ticket_id, signal_type) "
+            "DO UPDATE SET sdp=excluded.sdp, created_at=excluded.created_at",
+            (ticket_id, signal_type, sdp.strip(), datetime.now(timezone.utc).isoformat()),
+        )
+    return {"stored": True}
+
+
+@app.get("/api/v1/escalations/{ticket_id}/signal")
+def get_escalation_signal(
+    ticket_id: str,
+    signal_type: str = Query(alias="type"),
+    x_helper_token: str | None = Header(default=None),
+) -> dict[str, str | None]:
+    if signal_type not in ("offer", "answer"):
+        plain_bad("Signal type must be offer or answer.")
+    if signal_type == "offer":
+        helper_auth(x_helper_token)
+    with connect() as db:
+        ticket = db.execute(
+            "SELECT type FROM escalations WHERE id=?", (ticket_id,)
+        ).fetchone()
+        if ticket is None:
+            raise HTTPException(status_code=404, detail="We could not find that ticket.")
+        row = db.execute(
+            "SELECT sdp FROM escalation_signals WHERE ticket_id=? AND signal_type=?",
+            (ticket_id, signal_type),
+        ).fetchone()
+    return {"type": signal_type, "sdp": row["sdp"] if row else None}
+
+
+@app.delete("/api/v1/escalations/{ticket_id}/signal")
+def delete_escalation_signal(ticket_id: str) -> dict[str, bool]:
+    with connect() as db:
+        ticket = db.execute(
+            "SELECT id FROM escalations WHERE id=?", (ticket_id,)
+        ).fetchone()
+        if ticket is None:
+            raise HTTPException(status_code=404, detail="We could not find that ticket.")
+        db.execute("DELETE FROM escalation_signals WHERE ticket_id=?", (ticket_id,))
+    return {"deleted": True}
 
 
 @app.post("/api/v1/escalations/{ticket_id}/reply")
