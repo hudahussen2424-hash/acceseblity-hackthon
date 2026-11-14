@@ -377,9 +377,11 @@
           .message-author { font-weight: 700; margin-bottom: 4px; font-size: 0.9em; color: var(--assistant-primary, #002b56); }
           .course-link { display: inline-block; margin-top: 8px; color: var(--assistant-primary, #002b56); font-weight: 600; text-decoration: underline; }
           .course-link:hover, .course-link:focus { text-decoration: none; }
+          :host([theme="dark"]) .course-link:focus-visible { outline-color: #1a1a1a; }
           .debug-score { font-size: 0.8em; color: #64748b; margin-top: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
           .person-action { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 14px; background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); border-radius: 4px; font-weight: 600; cursor: pointer; }
           .person-action:focus-visible { outline: 3px solid var(--assistant-focus, #1a1a1a); outline-offset: 2px; }
+          :host([theme="dark"]) .launcher:focus-visible, :host([theme="dark"]) .message :focus-visible { outline-color: #1a1a1a; }
           .voice-controls { display: flex; flex-wrap: wrap; gap: 8px; }
           .listen-button { display: block; margin-top: 8px; }
           .voice-status { min-height: 1.5em; margin: 0; }
@@ -388,7 +390,7 @@
           .escalation { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #94a3b8; padding-top: 12px; }
           .escalation[hidden], [hidden] { display: none !important; }
           .consent { display: flex; align-items: flex-start; gap: 8px; }
-          .consent input { width: 20px; height: 20px; flex: none; margin: 2px 0 0; }
+          .consent input { width: 24px; height: 24px; flex: none; margin: 2px 0 0; }
           .screen-share { display: flex; flex-direction: column; gap: 8px; border: 1px solid #94a3b8; border-radius: 6px; padding: 10px; }
           .screen-share h3 { margin: 0; font-size: 1rem; }
           .screen-share input[type="file"] { max-width: 100%; min-height: 44px; }

@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 
 from api.qa import SENSITIVE_REFUSAL, answer_question
 
@@ -43,9 +44,15 @@ def test_provider_failure_falls_back_to_best_section(monkeypatch):
     assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
 
 
-def test_sensitive_topic_is_refused_without_provider_call():
+@pytest.mark.parametrize("question, language", [
+    ("Can you give me legal advice?", "en"),
+    ("Which medicine should I take for this symptom?", "en"),
+    ("How do I apply for an immigration visa?", "en"),
+    ("ስለ ሕግ ጥያቄ አለኝ", "am"),
+])
+def test_sensitive_topic_is_refused_without_provider_call(question, language):
     provider = FakeProvider({"text": "unsafe generated answer"})
-    result = asyncio.run(answer_question("Can you give me legal advice?", "en", SECTIONS, provider))
+    result = asyncio.run(answer_question(question, language, SECTIONS, provider))
     assert provider.calls == 0
     assert result["answer"] == SENSITIVE_REFUSAL
     assert result["mode"] == "search"

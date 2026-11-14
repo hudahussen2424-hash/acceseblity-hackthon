@@ -13,7 +13,7 @@ db-assistant is a framework-free web component that answers learner questions fr
 
 ## Run it (docker compose up, then which address)
 
-Copy `.env.example` to `.env`, set a long random `HELPER_TOKEN`, then run:
+Copy `.env.example` to `.env`, replace the placeholder with a long random `HELPER_TOKEN`, and set `WEBHOOK_URL=` unless you have configured your own trusted endpoint. The example file contains a placeholder webhook URL. Then run:
 
 ```sh
 docker compose up
@@ -91,9 +91,9 @@ curl -sS "$API/api/v1/content"
 curl -sS -X POST "$API/api/v1/content" -H 'Content-Type: application/json' \
   -d '[{"id":"sample","title":"Sample lesson","url":"/lesson#sample","text":{"en":"Sample text.","am":"የናሙና ጽሑፍ።"}}]'
 
-# POST /api/v1/escalations
+# POST /api/v1/escalations (screen-share ticket; use its returned ID for the signal calls)
 curl -sS -X POST "$API/api/v1/escalations" -H 'Content-Type: application/json' \
-  -d '{"conversation":[{"text":"Please explain this lesson."}],"language":"en","page":"https://example.org/lesson","note":""}'
+  -d '{"type":"screen-share","conversation":[{"text":"Please explain this lesson."}],"language":"en","page":"https://example.org/lesson","note":""}'
 
 # GET /api/v1/escalations (waiting tickets; helper token)
 curl -sS "$API/api/v1/escalations" -H "X-Helper-Token: $TOKEN"
@@ -163,7 +163,7 @@ After content has loaded, the widget can search its locally loaded sections if t
 
 There is a service-worker cache in `sw.js` and `module/sw.js`. It caches static assets when the root worker is served, but the current Compose `web` service does not mount the repository's root `sw.js`; therefore offline reload/cache behavior is not guaranteed with the Compose setup. The first page load also needs a network connection.
 
-Measured on 2026-11-14 using Chromium against the local static demo, with browser cache and `localStorage` cleared, 400 ms round-trip latency, 400 Kbps up/down, and 4× CPU throttling: the page load event took 2.53 s and the assistant plus course content were ready in 3.24 s. The four measured subresources transferred 95,025 bytes (about 92.8 KiB), including response headers; the unminified assistant and search JavaScript files total 79,605 bytes (about 77.7 KiB). This run did not call the API and is not a hosted-network or 3,000-learner load test. The repeatable Lighthouse script is [`scripts/measure-slow3g.ps1`](./scripts/measure-slow3g.ps1); it needs Node/npm, Lighthouse, and Chrome.
+Measured on 2026-11-14 using Chromium against the local static demo, with browser cache and `localStorage` cleared, the service worker bypassed, 400 ms round-trip latency, 400 Kbps up/down, and 4× CPU throttling: the page load event took 2.53 s and the assistant plus course content were ready in 3.24 s. The four measured subresources transferred 95,025 bytes (about 92.8 KiB), including response headers; the unminified assistant and search JavaScript files total 79,605 bytes (about 77.7 KiB). This run did not call the API and is not a hosted-network or 3,000-learner load test. The repeatable Lighthouse script is [`scripts/measure-slow3g.ps1`](./scripts/measure-slow3g.ps1); it needs Node/npm, Lighthouse, and Chrome.
 
 ## Data and privacy (what is collected, where, how to see/export/delete, consent, voice and screen sharing off until started)
 
@@ -174,6 +174,8 @@ Measured on 2026-11-14 using Chromium against the local static demo, with browse
 - A configured `WEBHOOK_URL` receives a ticket-opened event with the ticket ID and timestamp, not the conversation text. Webhook operators may retain their own logs.
 - Desktop screen capture begins only after the learner consents, clicks the button, and chooses a source in the browser. The video stream is not recorded or stored by the app; temporary WebRTC offer/answer descriptions are stored in SQLite during signaling and are removed on stop/connection cleanup. Android Chrome uses page-context sharing instead of live capture; the optional screenshot is stored with the ticket.
 - Microphone speech recognition/recording is off until the learner presses its control. A voice note is not sent until it is attached to a tutor request.
+
+Use this limitation copy: **“On Android Chrome, live screen sharing is unavailable; you can share page details and optionally upload a screenshot instead.”**
 
 Use the helper inbox at `/helper` or the helper-token-protected `GET /api/v1/escalations` to view waiting tickets. There is no learner self-service export endpoint: an operator can back up or export the SQLite file directly. A helper can delete a ticket through the inbox or `DELETE /api/v1/escalations/{ticket_id}`. Learners can clear widget-local data through their browser's site-data controls. SMS alerts can be turned off by texting `ALERT OFF`; Telegram job alerts can be turned off with `/alerts off`. Configure a persistent database volume and backups before deployment; the default Compose API database is inside the container.
 

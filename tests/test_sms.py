@@ -152,3 +152,12 @@ def test_escalation_stores_canonical_ethiopian_phone(client):
     with connect() as db:
         row = db.execute("SELECT phone FROM escalations WHERE id=?", (response.json()["ticketId"],)).fetchone()
     assert row["phone"] == "+251711223344"
+
+
+def test_invalid_escalation_phone_is_rejected(client):
+    response = client.post("/api/v1/escalations", json={
+        "conversation": [], "language": "en", "page": "http://localhost/lesson",
+        "note": "", "phone": "0611223344"
+    })
+    assert response.status_code == 400
+    assert "Ethiopian mobile number" in response.json()["detail"]
