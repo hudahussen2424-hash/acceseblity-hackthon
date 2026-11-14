@@ -10,6 +10,7 @@ const STATIC_ASSETS = [
   new URL("i18n/om.json", MODULE_ROOT),
   new URL("i18n/ar.json", MODULE_ROOT),
   new URL("demo/data/content.json", APP_ROOT),
+  new URL("demo/data/jobs.json", APP_ROOT),
   new URL("demo/blank.html", APP_ROOT)
 ];
 

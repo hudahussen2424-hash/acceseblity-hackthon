@@ -1,137 +1,338 @@
-# Hackthon
+# Learning Assistant & Course Escalations
 
-## Telegram Bot
-
-Create a bot by opening [@BotFather](https://t.me/BotFather) in Telegram, sending `/newbot`, and following its prompts. Copy the token BotFather returns into a project-root `.env` file as `TELEGRAM_BOT_TOKEN=your-token`. Start the long-polling bot with `docker compose up --build`; it uses Telegram `getUpdates` and does not need a public server or webhook. Docker Compose requires the token and will not start the service without it.
+A lightweight, accessible learning assistant and tutor escalation system supporting multilingual search (English & Amharic), SMS integration, WebRTC screen assistance, and automated webhooks.
 
 ---
 
-## Screen sharing demo
+## Quick Start (Docker Compose)
 
-Screen sharing is off until the learner checks the consent box and presses a sharing button. On desktop browsers that support `getDisplayMedia()`, the learner chooses what to share; a persistent status bar includes a Stop button. The live stream is sent directly to the tutor through a minimal WebRTC offer/answer demo and is not recorded or stored by the app. Signaling descriptions are temporarily stored until the connection is established or sharing is stopped. This demo has no STUN/TURN service, so direct WebRTC may fail on some networks.
-
-**Android Chrome limitation:** Android Chrome does not support `getDisplayMedia()` in this flow, so it cannot share a live screen. It offers “Show my tutor where I am” instead, which sends the current page URL, focused element accessible name, up to 500 characters of that element's outerHTML, page headings, and only a screenshot the learner explicitly chooses to upload. Say this plainly in product/help copy: **“On Android Chrome, live screen sharing is unavailable; you can share page details and optionally upload a screenshot instead.”**
-
-### Manual test checklist
-
-- [ ] Before consent and a learner click, neither capture route starts and no page details are sent.
-- [ ] On desktop, consent followed by “Share my screen” opens the browser's native picker; canceling it leaves sharing off.
-- [ ] While desktop capture is active, the persistent “You are sharing your screen” status and real Stop button are visible and announced; Stop ends every media track.
-- [ ] With the helper inbox open, connect to the learner's screen; verify the video arrives, then stop sharing and confirm it ends. Try a network that blocks direct WebRTC and verify the failure is clear.
-- [ ] In Android Chrome, verify the page-context button is shown instead of live capture. Submit without a screenshot and verify URL, focused element details, and headings appear in the helper inbox.
-- [ ] Upload a supported image and verify it appears in the helper inbox; try an oversized or unsupported image and verify it is rejected.
-- [ ] Verify consent copy is localized in English and Amharic, and no screen/page context is shared unless the learner explicitly starts that route.
-
-Run the API coverage with `pytest tests/test_screen_sharing.py`.
-
----
-
-## SMS Inbound Endpoint (`POST /sms/inbound`)
-
-The learning assistant supports inbound SMS messaging for low-bandwidth learners via `POST /sms/inbound`.
-
-### How a Real SMS Gateway Calls This Endpoint
-
-Real-world SMS telecom aggregators (e.g., Africa's Talking, Twilio, Infobip, or local telco VAS gateways) receive inbound mobile-originated (MO) SMS messages from cellular networks and forward them to web applications via HTTP POST webhooks.
-
-1. **Webhook Configuration**:
-   In the gateway's portal (e.g., Africa's Talking SMS Callback URL or Twilio Webhook), configure the endpoint URL:
-   ```text
-   https://your-domain.example.com/sms/inbound
-   ```
-
-2. **Payload Forwarding**:
-   When a learner texts the shortcode or phone number, the gateway translates the SMS into JSON:
-   ```json
-   {
-     "from": "+251911223344",
-     "text": "Can artificial intelligence draft routine emails?"
-   }
-   ```
-   If using form-encoded gateways (e.g., standard Twilio `From` & `Body`), an API gateway middleware or reverse proxy maps `From` &rarr; `from` and `Body` &rarr; `text`.
-
-3. **Direct Plain-Text Response**:
-   The endpoint responds synchronously with `Content-Type: text/plain` containing **at most 160 characters**. This allows SMS gateways to immediately relay the HTTP response body back to the cellular network as a single-segment reply SMS without incurring multi-part concatenation fees.
-
-4. **Privacy & Data Minimization**:
-   The endpoint **never** stores the learner's raw phone number. Only an irreversible SHA-256 hash of the normalized phone number is stored in the database for managing subscription state (`sms_alerts`) and tutor escalation references (`escalations`).
-
----
-
-### Special Commands
-
-- **`PERSON`**: Opens an escalation ticket for a human tutor to follow up.
-- **`JOBS`**: Returns up to 3 available virtual assistant job titles.
-- **`ALERT ON` / `ALERT OFF`** (or **`ALERT`**): Toggles job alert SMS notifications for that phone number.
-
----
-
-### 4 Curl Examples
-
-#### 1. Question in English
-Ask a question about the course in English. The response includes an answer snippet truncated at a word boundary and a short source reference (e.g., `Course s2`), strictly within 160 characters:
+Launch the entire stack with a single command:
 
 ```bash
-curl -X POST http://localhost:8000/sms/inbound \
+docker compose up
+```
+
+This starts:
+- **`web`**: Static web server (`nginx:alpine`) on [http://localhost:8080](http://localhost:8080) serving lesson pages (`/savanna`), interactive assistant module (`/module`), and demo content (`/demo`).
+- **`api`**: FastAPI service on [http://localhost:8081](http://localhost:8081) with full CORS enabled for the web origin.
+
+### Optional Profiles
+
+- **Telegram Bot**:
+  ```bash
+  docker compose --profile telegram up
+  ```
+- **Local Ollama LLM**:
+  ```bash
+  docker compose --profile ollama up
+  ```
+- **Run Everything**:
+  ```bash
+  docker compose --profile telegram --profile ollama up
+  ```
+
+---
+
+## Swagger UI & OpenAPI Schema
+
+- **Interactive Swagger UI**: [http://localhost:8081/docs](http://localhost:8081/docs)
+- **ReDoc Documentation**: [http://localhost:8081/redoc](http://localhost:8081/redoc)
+- **OpenAPI JSON**: [http://localhost:8081/openapi.json](http://localhost:8081/openapi.json)
+
+To export the OpenAPI specification to `openapi.yaml` in the repository root, run:
+
+```bash
+python scripts/export_openapi.py
+```
+
+---
+
+## Webhook Integration & Request Catcher Testing
+
+When an escalation ticket is created, the server automatically issues an HTTP POST to `WEBHOOK_URL` with the payload:
+
+```json
+{
+  "event": "ticket.opened",
+  "ticketId": "<uuid>",
+  "at": "<iso-8601-timestamp>"
+}
+```
+
+### Testing with Request Catcher
+
+1. Open [https://requestcatcher.com](https://requestcatcher.com) and create a test endpoint (e.g. `https://savanna-test.requestcatcher.com`).
+2. Add the URL to your `.env` file:
+   ```env
+   WEBHOOK_URL=https://savanna-test.requestcatcher.com/webhook
+   ```
+3. Create an escalation ticket via `curl`:
+   ```bash
+   curl -X POST http://localhost:8081/api/v1/escalations \
+     -H "Content-Type: application/json" \
+     -d '{
+       "conversation": [{"from": "user", "text": "Can someone help me with Section 2?"}],
+       "language": "en",
+       "page": "savanna/pages/concept-with-navigation.html#artificial-intelligence-and-the-future-of-va-work",
+       "note": "Question about AI tools"
+     }'
+   ```
+4. Check your Request Catcher browser window. You will see an immediate POST request containing:
+   ```json
+   {
+     "event": "ticket.opened",
+     "ticketId": "c4b12345-6789-abcd-ef01-23456789abcd",
+     "at": "2026-11-14T16:30:00.000000+00:00"
+   }
+   ```
+
+---
+
+## Endpoint Curl Reference
+
+All endpoints return JSON (except `/sms/inbound` which returns plain-text SMS responses &le; 160 characters).
+
+### 1. `POST /api/v1/ask`
+Ask a question against course content with pure retrieval or optional AI fallback.
+
+```bash
+curl -X POST http://localhost:8081/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "How does artificial intelligence help virtual assistants?",
+    "language": "en"
+  }'
+```
+
+### 2. `GET /api/v1/content`
+Retrieve all indexed course and job content sections.
+
+```bash
+curl -X GET http://localhost:8081/api/v1/content
+```
+
+### 3. `POST /api/v1/content`
+Index or update course sections.
+
+```bash
+curl -X POST http://localhost:8081/api/v1/content \
+  -H "Content-Type: application/json" \
+  -d '[
+    {
+      "id": "what-is-shaping-the-future-of-va-work",
+      "title": "What is Shaping the Future of VA Work",
+      "url": "savanna/pages/concept-with-navigation.html#what-is-shaping-the-future-of-va-work",
+      "text": {
+        "en": "The world of virtual assistance is evolving quickly due to rapid technological change.",
+        "am": "የቨርቹዋል ረዳትነት የሥራ መስክ በቴክኖሎጂ እድገት ምክንያት በፍጥነት እየተለወጠ ነው።"
+      }
+    }
+  ]'
+```
+
+### 4. `POST /api/v1/escalations` (Status: 201 Created)
+Create a learner escalation ticket for tutor follow-up.
+
+```bash
+curl -X POST http://localhost:8081/api/v1/escalations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conversation": [
+      {"from": "user", "text": "I do not understand asynchronous communication."}
+    ],
+    "language": "en",
+    "page": "savanna/pages/concept-with-navigation.html#what-this-means-for-aspiring-virtual-assistants",
+    "note": "Learner asked for clarification on communication practices"
+  }'
+```
+
+### 5. `GET /api/v1/escalations`
+List waiting tutor escalations (requires `X-Helper-Token`).
+
+```bash
+curl -X GET http://localhost:8081/api/v1/escalations \
+  -H "X-Helper-Token: replace-with-a-long-random-token"
+```
+
+### 6. `GET /api/v1/escalations/{ticket_id}`
+Get details and reply status for a specific ticket.
+
+```bash
+curl -X GET http://localhost:8081/api/v1/escalations/TICKET_ID_HERE
+```
+
+### 7. `POST /api/v1/escalations/{ticket_id}/reply`
+Tutor submits a reply to an open escalation ticket.
+
+```bash
+curl -X POST http://localhost:8081/api/v1/escalations/TICKET_ID_HERE/reply \
+  -H "Content-Type: application/json" \
+  -H "X-Helper-Token: replace-with-a-long-random-token" \
+  -d '{
+    "text": "Hello! Asynchronous communication means sending messages without expecting an immediate reply, such as email or Slack."
+  }'
+```
+
+### 8. `DELETE /api/v1/escalations/{ticket_id}`
+Delete an escalation ticket once resolved.
+
+```bash
+curl -X DELETE http://localhost:8081/api/v1/escalations/TICKET_ID_HERE \
+  -H "X-Helper-Token: replace-with-a-long-random-token"
+```
+
+### 9. `POST /api/v1/jobs/notify`
+Broadcast a new job posting to subscribed learners via Telegram and SMS alerts.
+
+```bash
+curl -X POST http://localhost:8081/api/v1/jobs/notify \
+  -H "Content-Type: application/json" \
+  -H "X-Helper-Token: replace-with-a-long-random-token" \
+  -d '{
+    "job": {
+      "id": "job-201",
+      "title": "Executive VA",
+      "location": "Addis Ababa",
+      "url": "https://example.com/jobs/201",
+      "description": "Calendar management and client correspondence.",
+      "remote": true
+    }
+  }'
+```
+
+### 10. `POST /sms/inbound` (and `POST /api/v1/sms/inbound`)
+Handles inbound mobile SMS messages, returning plain text &le; 160 characters.
+
+#### Example A: English Question
+```bash
+curl -X POST http://localhost:8081/sms/inbound \
   -H "Content-Type: application/json" \
   -d '{
     "from": "+12025550199",
     "text": "Can artificial intelligence draft routine emails?"
   }'
 ```
-
-**Example Response (`text/plain` &le; 160 chars):**
+*Response (`text/plain` &le; 160 chars):*
 ```text
 Rather than eliminating human assistants, artificial intelligence automates repetitive duties such as drafting routine emails... (Course s2)
 ```
 
-#### 2. Question in Amharic
-Ask a question in Amharic script (Ethiopic Unicode). The system automatically detects Amharic, queries the Amharic course sections, and returns the response in Amharic:
-
+#### Example B: Amharic Question
 ```bash
-curl -X POST http://localhost:8000/sms/inbound \
+curl -X POST http://localhost:8081/sms/inbound \
   -H "Content-Type: application/json" \
   -d '{
     "from": "+251911223344",
     "text": "አርቴፊሻል ኢንተለጀንስ የሰዎችን ሥራ ይተካል?"
   }'
 ```
-
-**Example Response (`text/plain` &le; 160 chars):**
+*Response (`text/plain` &le; 160 chars):*
 ```text
 አርቴፊሻል ኢንተለጀንስ ወይም ዘመናዊ የኮምፒውተር ፕሮግራሞች የቨርቹዋል ረዳቶችን የዕለት ተዕለት ሥራ እያቀለሉ ነው። እነዚህ የቴክኖሎጂ መሣሪያዎች ሰዎችን ሙሉ በሙሉ አያስቀሩም ወይም አይተኩም... (Course s2)
 ```
 
-#### 3. Human Escalation (`PERSON`)
-Request human tutor support. An escalation record is created with the sender's phone hash, and a confirmation is returned:
-
+#### Example C: Tutor Escalation (`PERSON`)
 ```bash
-curl -X POST http://localhost:8000/sms/inbound \
+curl -X POST http://localhost:8081/sms/inbound \
   -H "Content-Type: application/json" \
   -d '{
     "from": "+251911223344",
     "text": "PERSON"
   }'
 ```
-
-**Example Response (`text/plain`):**
+*Response:*
 ```text
 A tutor will answer here. It may take until morning.
 ```
 
-#### 4. Job Listings (`JOBS`)
-List up to 3 active job titles:
-
+#### Example D: Job Listings (`JOBS`)
 ```bash
-curl -X POST http://localhost:8000/sms/inbound \
+curl -X POST http://localhost:8081/sms/inbound \
   -H "Content-Type: application/json" \
   -d '{
     "from": "+251911223344",
     "text": "JOBS"
   }'
 ```
-
-**Example Response (`text/plain`):**
+*Response:*
 ```text
 Jobs: 1. Executive VA 2. Social Media Assistant 3. Customer Support VA
+```
+
+#### Example E: Toggle Job Alerts (`ALERT ON` / `ALERT OFF`)
+```bash
+curl -X POST http://localhost:8081/sms/inbound \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "+251911223344",
+    "text": "ALERT ON"
+  }'
+```
+*Response:*
+```text
+Job alerts turned on.
+```
+
+---
+
+## How Real SMS Gateways Call `/sms/inbound`
+
+Real-world SMS telecom aggregators (e.g. Africa's Talking, Twilio, Infobip, or local Ethio Telecom VAS partners) route inbound mobile SMS to web services:
+
+1. **Webhook Registration**:
+   Configure the gateway's Inbound SMS Callback URL to point to:
+   ```text
+   https://your-public-domain.com/sms/inbound
+   ```
+2. **Payload Delivery**:
+   When a user sends an SMS to the designated shortcode, the aggregator delivers a JSON payload:
+   ```json
+   {
+     "from": "+251911223344",
+     "text": "What does a virtual assistant do?"
+   }
+   ```
+   For providers sending `application/x-www-form-urlencoded` fields (`From` and `Body`), an API Gateway or lightweight reverse proxy adapts the fields to `"from"` and `"text"`.
+3. **Synchronous Plain-Text Response**:
+   The endpoint responds synchronously with `Content-Type: text/plain` bounded to 160 characters. The SMS gateway captures this response body and delivers it back to the handset as an immediate single-part SMS reply.
+4. **Data Minimization & Privacy**:
+   The service never stores raw phone numbers in the database. Phone numbers are hashed using SHA-256 for ticket reference and subscription tracking. When outbound alerts are enabled, numbers are encrypted at rest using Fernet symmetric encryption.
+
+---
+
+## Telegram Bot Integration
+
+To connect the Telegram bot:
+1. Contact [@BotFather](https://t.me/BotFather) on Telegram and create a new bot with `/newbot`.
+2. Copy the bot token into `.env`:
+   ```env
+   TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
+   ```
+3. Run the bot using the Docker Compose telegram profile:
+   ```bash
+   docker compose --profile telegram up
+   ```
+The bot uses long polling (`getUpdates`) and requires no public domain or inbound ports.
+
+---
+
+## Screen Sharing & Android Support
+
+Screen sharing is initiated only with explicit learner consent. On modern desktop browsers, `getDisplayMedia()` coordinates a peer-to-peer WebRTC connection.
+
+**Android Chrome Notice:**
+Android Chrome does not support native `getDisplayMedia()`. On Android Chrome, the assistant falls back to “Show my tutor where I am”, sending page URL, focused element details, headings, and an optional user-selected screenshot.
+
+---
+
+## Running Automated Tests
+
+Run the full test suite (unit tests, API coverage, retrieval, and SMS validation):
+
+```bash
+# Python backend tests
+python -m pytest tests/
+
+# Node.js search algorithm unit tests
+node --test tests/search.test.js
 ```

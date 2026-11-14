@@ -214,6 +214,7 @@
 
     connectedCallback() {
       document.addEventListener("focusin", this._rememberPageFocus, true);
+      if (this._onlineHandler) window.addEventListener("online", this._onlineHandler);
       if (this._built) return;
       this._built = true;
       this._storageKey = `db-assistant:${location.pathname}:${this.id || "default"}`;
@@ -841,7 +842,6 @@
       let wasQueued = isOffline;
       if (isOffline) this._queueQuestion(text, currentLang);
       else if (await this._askServer(text, currentLang)) return;
-      else { this._queueQuestion(text, currentLang); wasQueued = true; }
 
       // 2. Ensure content and search function are ready
       if (!this._sections || this._sections.length === 0) {
