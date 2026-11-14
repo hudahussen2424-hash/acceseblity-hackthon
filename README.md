@@ -1,338 +1,204 @@
-# Learning Assistant & Course Escalations
+# db-assistant — Accessibility track
 
-A lightweight, accessible learning assistant and tutor escalation system supporting multilingual search (English & Amharic), SMS integration, WebRTC screen assistance, and automated webhooks.
+**Team members:** [TEAM MEMBERS]  
+**Co-designer:** [CO-DESIGNER]
 
----
+## What it does (three sentences)
 
-## Quick Start (Docker Compose)
+db-assistant is a framework-free web component that answers learner questions from course and job content and links to its sources. The FastAPI service provides retrieval, tutor escalations, SMS routes, and a helper inbox, with optional Telegram and Ollama Compose profiles. The demo has full English and Amharic UI packs, partial Arabic and Oromo packs, practice jobs, queued questions, and learner-started voice and screen-sharing tools.
 
-Launch the entire stack with a single command:
+## The main task we tested (one sentence: [PASTE MY MAIN-TASK SENTENCE])
 
-```bash
+[PASTE MY MAIN-TASK SENTENCE]
+
+## Run it (docker compose up, then which address)
+
+Copy `.env.example` to `.env`, set a long random `HELPER_TOKEN`, then run:
+
+```sh
 docker compose up
 ```
 
-This starts:
-- **`web`**: Static web server (`nginx:alpine`) on [http://localhost:8080](http://localhost:8080) serving lesson pages (`/savanna`), interactive assistant module (`/module`), and demo content (`/demo`).
-- **`api`**: FastAPI service on [http://localhost:8081](http://localhost:8081) with full CORS enabled for the web origin.
+- Open the lesson at [http://localhost:8080/](http://localhost:8080/).
+- Open the API documentation at [http://localhost:8081/docs](http://localhost:8081/docs).
+- Open the tutor inbox at [http://localhost:8081/helper](http://localhost:8081/helper) and enter the helper token.
 
-### Optional Profiles
+The database defaults to `api/escalations.sqlite3` on the host when run directly. In the Compose container it is at `/app/api/escalations.sqlite3`; Compose does not mount a persistent volume for it, so recreating the API container can lose stored records. Add a persistent volume and backups before using this for real learners.
 
-- **Telegram Bot**:
-  ```bash
-  docker compose --profile telegram up
-  ```
-- **Local Ollama LLM**:
-  ```bash
-  docker compose --profile ollama up
-  ```
-- **Run Everything**:
-  ```bash
-  docker compose --profile telegram --profile ollama up
-  ```
+The checked-in demo pages do not set the component's `api` attribute. The widget therefore tries the page's origin (`localhost:8080`) for API requests: local content search can still work, but API-backed tickets, tutor replies, and screen-sharing signaling need `api="http://localhost:8081"` as shown below. The helper inbox is served by the API independently.
 
----
+## Install, Level 1 (script tag, every attribute, every event)
 
-## Swagger UI & OpenAPI Schema
+Serve `module/` and `demo/` from your site, serve the FastAPI service, and add:
 
-- **Interactive Swagger UI**: [http://localhost:8081/docs](http://localhost:8081/docs)
-- **ReDoc Documentation**: [http://localhost:8081/redoc](http://localhost:8081/redoc)
-- **OpenAPI JSON**: [http://localhost:8081/openapi.json](http://localhost:8081/openapi.json)
-
-To export the OpenAPI specification to `openapi.yaml` in the repository root, run:
-
-```bash
-python scripts/export_openapi.py
+```html
+<script src="/module/db-assistant.js" defer></script>
+<db-assistant
+  id="lesson-assistant"
+  lang="en"
+  api="https://api.example.org"
+  content="/demo/data/content.json"
+  theme="light"
+  debug
+></db-assistant>
 ```
 
----
+The script has no required attributes other than `src`. The component accepts:
 
-## Webhook Integration & Request Catcher Testing
+- `lang`: language code. English (`en`) and Amharic (`am`) have full interface packs; Arabic (`ar`) and Oromo (`om`) packs are partial. The language buttons in the widget switch between English and Amharic.
+- `api`: API base URL without a trailing slash. If omitted, the current page's origin is used. Set this when the static site and API use different ports or domains.
+- `content`: URL of a JSON array of content sections. If omitted, the module tries the repository demo content at `../demo/data/content.json` relative to the script URL.
+- `theme`: `light` or `dark`; the default is `light`.
+- `debug`: boolean attribute that shows matching scores when present. `?debug=1` in the page URL also enables score display.
+- `id`: standard HTML ID; it distinguishes this widget's browser-local history and question queue from another instance. If omitted, the instance uses `default`.
 
-When an escalation ticket is created, the server automatically issues an HTTP POST to `WEBHOOK_URL` with the payload:
+The widget also reads these ordinary browser attributes as usual: `class`, `style`, `title`, and accessibility attributes. They are not additional component settings.
 
-```json
-{
-  "event": "ticket.opened",
-  "ticketId": "<uuid>",
-  "at": "<iso-8601-timestamp>"
-}
+Listen for these bubbling, composed custom events on the element:
+
+```js
+const assistant = document.querySelector("#lesson-assistant");
+assistant.addEventListener("db-assistant:ready", (event) => console.log(event.detail));
+assistant.addEventListener("db-assistant:question", (event) => console.log(event.detail.text));
 ```
 
-### Testing with Request Catcher
+- `db-assistant:ready`: `{ lang, dir }` after a translation pack is applied.
+- `db-assistant:open` and `db-assistant:close`: empty detail objects.
+- `db-assistant:question`: `{ text }` for a learner-submitted question.
+- `db-assistant:person`: empty detail object when the learner opens the tutor escalation flow.
+- `db-assistant:error`: `{ code: "empty-question" }` when an empty question is submitted.
+- `db-assistant:escalated`: `{ ticketId }` after a regular tutor ticket is created, or `{ ticketId, type: "accommodation" }` for an accommodation ticket.
 
-1. Open [https://requestcatcher.com](https://requestcatcher.com) and create a test endpoint (e.g. `https://savanna-test.requestcatcher.com`).
-2. Add the URL to your `.env` file:
-   ```env
-   WEBHOOK_URL=https://savanna-test.requestcatcher.com/webhook
-   ```
-3. Create an escalation ticket via `curl`:
-   ```bash
-   curl -X POST http://localhost:8081/api/v1/escalations \
-     -H "Content-Type: application/json" \
-     -d '{
-       "conversation": [{"from": "user", "text": "Can someone help me with Section 2?"}],
-       "language": "en",
-       "page": "savanna/pages/concept-with-navigation.html#artificial-intelligence-and-the-future-of-va-work",
-       "note": "Question about AI tools"
-     }'
-   ```
-4. Check your Request Catcher browser window. You will see an immediate POST request containing:
-   ```json
-   {
-     "event": "ticket.opened",
-     "ticketId": "c4b12345-6789-abcd-ef01-23456789abcd",
-     "at": "2026-11-14T16:30:00.000000+00:00"
-   }
-   ```
+There are no custom events for microphone or screen-sharing state. Add a locale by creating `module/i18n/<code>.json` with the full `strings` map, adding translations to the course data, adding the code to `SUPPORTED_LANGUAGES` in `api/main.py`, and exposing it in the widget's language controls if learners should be able to select it.
 
----
+## Install, Level 2 (link to openapi.yaml, one curl per call)
 
-## Endpoint Curl Reference
+The checked-in schema is [`openapi.yaml`](./openapi.yaml). With Compose running, the live Swagger UI is at `http://localhost:8081/docs`. The examples below use a POSIX shell; replace the token and ticket ID. Set `HELPER_TOKEN` in `.env`: when that environment value is empty, the current API helper check does not enforce a token.
 
-All endpoints return JSON (except `/sms/inbound` which returns plain-text SMS responses &le; 160 characters).
+```sh
+API=http://localhost:8081
+TOKEN=replace-with-your-helper-token
+TICKET_ID=replace-with-ticket-id
 
-### 1. `POST /api/v1/ask`
-Ask a question against course content with pure retrieval or optional AI fallback.
+# POST /api/v1/ask
+curl -sS -X POST "$API/api/v1/ask" -H 'Content-Type: application/json' \
+  -d '{"question":"How does AI help virtual assistants?","language":"en"}'
 
-```bash
-curl -X POST http://localhost:8081/api/v1/ask \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "How does artificial intelligence help virtual assistants?",
-    "language": "en"
-  }'
+# GET /api/v1/content
+curl -sS "$API/api/v1/content"
+
+# POST /api/v1/content
+curl -sS -X POST "$API/api/v1/content" -H 'Content-Type: application/json' \
+  -d '[{"id":"sample","title":"Sample lesson","url":"/lesson#sample","text":{"en":"Sample text.","am":"የናሙና ጽሑፍ።"}}]'
+
+# POST /api/v1/escalations
+curl -sS -X POST "$API/api/v1/escalations" -H 'Content-Type: application/json' \
+  -d '{"conversation":[{"text":"Please explain this lesson."}],"language":"en","page":"https://example.org/lesson","note":""}'
+
+# GET /api/v1/escalations (waiting tickets; helper token)
+curl -sS "$API/api/v1/escalations" -H "X-Helper-Token: $TOKEN"
+
+# GET /api/v1/escalations/{ticket_id} (reply/status fields)
+curl -sS "$API/api/v1/escalations/$TICKET_ID"
+
+# POST /api/v1/escalations/{ticket_id}/reply
+curl -sS -X POST "$API/api/v1/escalations/$TICKET_ID/reply" \
+  -H "X-Helper-Token: $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"text":"Please review the lesson example and try the practice question."}'
+
+# DELETE /api/v1/escalations/{ticket_id} (helper token)
+curl -sS -X DELETE "$API/api/v1/escalations/$TICKET_ID" -H "X-Helper-Token: $TOKEN"
+
+# POST /api/v1/jobs/notify (helper token)
+curl -sS -X POST "$API/api/v1/jobs/notify" \
+  -H "X-Helper-Token: $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"job":{"id":"practice-1","title":"Test job","location":"Addis Ababa","url":"https://example.org/job","description":"Practice listing.","remote":true}}'
+
+# POST /sms/inbound
+curl -sS -X POST "$API/sms/inbound" -H 'Content-Type: application/json' \
+  -d '{"from":"+251911223344","text":"JOBS"}'
+
+# POST /api/v1/sms/inbound (alias of /sms/inbound)
+curl -sS -X POST "$API/api/v1/sms/inbound" -H 'Content-Type: application/json' \
+  -d '{"from":"+251911223344","text":"PERSON"}'
+
+# POST /api/v1/escalations/{ticket_id}/signal with a learner-generated offer
+curl -sS -X POST "$API/api/v1/escalations/$TICKET_ID/signal" \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"offer","sdp":"PASTE_REAL_WEBRTC_OFFER_SDP_HERE"}'
+
+# GET /api/v1/escalations/{ticket_id}/signal?type=offer (helper token)
+curl -sS -G "$API/api/v1/escalations/$TICKET_ID/signal" \
+  --data-urlencode 'type=offer' -H "X-Helper-Token: $TOKEN"
+
+# POST /api/v1/escalations/{ticket_id}/signal with a helper-generated answer
+curl -sS -X POST "$API/api/v1/escalations/$TICKET_ID/signal" \
+  -H "X-Helper-Token: $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"type":"answer","sdp":"PASTE_REAL_WEBRTC_ANSWER_SDP_HERE"}'
+
+# GET /api/v1/escalations/{ticket_id}/signal?type=answer
+curl -sS -G "$API/api/v1/escalations/$TICKET_ID/signal" --data-urlencode 'type=answer'
+
+# DELETE /api/v1/escalations/{ticket_id}/signal
+curl -sS -X DELETE "$API/api/v1/escalations/$TICKET_ID/signal"
 ```
 
-### 2. `GET /api/v1/content`
-Retrieve all indexed course and job content sections.
+The screen-signal examples are request shapes only: replace the SDP placeholders with real descriptions generated by WebRTC. The browser and helper page normally perform these calls. The offer/answer route is a demo transport, not a general media relay.
 
-```bash
-curl -X GET http://localhost:8081/api/v1/content
-```
+## Install, Level 3 (JobPosting JSON-LD; honest "how LTI would connect" section if not done)
 
-### 3. `POST /api/v1/content`
-Index or update course sections.
+[`savanna/pages/jobs.html`](./savanna/pages/jobs.html) contains a static `application/ld+json` graph with eight fictional `JobPosting` examples. The page labels them as test listings; their `.example.test` URLs are not real vacancies. Replace the test values with verified job data before publishing. The JSON-LD block and the separately loaded `demo/data/jobs.json` are not automatically synchronized.
 
-```bash
-curl -X POST http://localhost:8081/api/v1/content \
-  -H "Content-Type: application/json" \
-  -d '[
-    {
-      "id": "what-is-shaping-the-future-of-va-work",
-      "title": "What is Shaping the Future of VA Work",
-      "url": "savanna/pages/concept-with-navigation.html#what-is-shaping-the-future-of-va-work",
-      "text": {
-        "en": "The world of virtual assistance is evolving quickly due to rapid technological change.",
-        "am": "የቨርቹዋል ረዳትነት የሥራ መስክ በቴክኖሎጂ እድገት ምክንያት በፍጥነት እየተለወጠ ነው።"
-      }
-    }
-  ]'
-```
+LTI is not implemented: there is no LMS launch endpoint, OIDC flow, signed-token validation, or grade passback. A real LTI 1.3 connection would need an LMS-registered client, OIDC login/launch endpoints, validation of the signed launch JWT against the platform's keys, and a mapping from the validated course/user context to an app session. Add Assignment and Grade Services only if the product needs grade passback. Do not treat the current demo as an LTI tool.
 
-### 4. `POST /api/v1/escalations` (Status: 201 Created)
-Create a learner escalation ticket for tutor follow-up.
+## Languages (and how to add one)
 
-```bash
-curl -X POST http://localhost:8081/api/v1/escalations \
-  -H "Content-Type: application/json" \
-  -d '{
-    "conversation": [
-      {"from": "user", "text": "I do not understand asynchronous communication."}
-    ],
-    "language": "en",
-    "page": "savanna/pages/concept-with-navigation.html#what-this-means-for-aspiring-virtual-assistants",
-    "note": "Learner asked for clarification on communication practices"
-  }'
-```
+The interface has complete English and Amharic packs. Arabic and Oromo files currently contain only a small subset of translated strings and fall back to English for missing strings. The course data in `demo/data/content.json` has English and Amharic text. The API accepts `en`, `am`, `om`, `ti`, `so`, and `ar`; accepting a language code does not mean the interface and course content are fully translated. The Telegram bot currently supports English and Amharic.
 
-### 5. `GET /api/v1/escalations`
-List waiting tutor escalations (requires `X-Helper-Token`).
+To add a language, complete a new `module/i18n/<code>.json` pack, translate course sections and relevant job content, add the code to `SUPPORTED_LANGUAGES` in `api/main.py`, and add a language control if it should be selectable. Test text direction, answer sources, validation errors, helper tickets, and speech behavior. The bot's command handling must also be updated separately if the new language is needed there.
 
-```bash
-curl -X GET http://localhost:8081/api/v1/escalations \
-  -H "X-Helper-Token: replace-with-a-long-random-token"
-```
+## Offline and slow connection (what works, measured Slow 3G load time, size in KB)
 
-### 6. `GET /api/v1/escalations/{ticket_id}`
-Get details and reply status for a specific ticket.
+After content has loaded, the widget can search its locally loaded sections if the API request fails. When the browser reports itself offline, submitted questions are kept in `localStorage` and retried after an `online` event. Chat history, content, translations, and that queue are also stored in browser `localStorage`; clearing site data removes those local copies. Offline answers are limited to content already available in the page or cache. Tutor tickets, live API calls, and WebRTC cannot be completed offline.
 
-```bash
-curl -X GET http://localhost:8081/api/v1/escalations/TICKET_ID_HERE
-```
+There is a service-worker cache in `sw.js` and `module/sw.js`. It caches static assets when the root worker is served, but the current Compose `web` service does not mount the repository's root `sw.js`; therefore offline reload/cache behavior is not guaranteed with the Compose setup. The first page load also needs a network connection.
 
-### 7. `POST /api/v1/escalations/{ticket_id}/reply`
-Tutor submits a reply to an open escalation ticket.
+Measured on 2026-11-14 using Chromium against the local static demo, with browser cache and `localStorage` cleared, 400 ms round-trip latency, 400 Kbps up/down, and 4× CPU throttling: the page load event took 2.53 s and the assistant plus course content were ready in 3.24 s. The four measured subresources transferred 95,025 bytes (about 92.8 KiB), including response headers; the unminified assistant and search JavaScript files total 79,605 bytes (about 77.7 KiB). This run did not call the API and is not a hosted-network or 3,000-learner load test. The repeatable Lighthouse script is [`scripts/measure-slow3g.ps1`](./scripts/measure-slow3g.ps1); it needs Node/npm, Lighthouse, and Chrome.
 
-```bash
-curl -X POST http://localhost:8081/api/v1/escalations/TICKET_ID_HERE/reply \
-  -H "Content-Type: application/json" \
-  -H "X-Helper-Token: replace-with-a-long-random-token" \
-  -d '{
-    "text": "Hello! Asynchronous communication means sending messages without expecting an immediate reply, such as email or Slack."
-  }'
-```
+## Data and privacy (what is collected, where, how to see/export/delete, consent, voice and screen sharing off until started)
 
-### 8. `DELETE /api/v1/escalations/{ticket_id}`
-Delete an escalation ticket once resolved.
+- Questions sent to the API include the question and language. The default `AI_PROVIDER=none` uses local retrieval. If `AI_PROVIDER=cloud` is configured, the question and matched course sections are sent to the configured HTTPS provider; `AI_PROVIDER=local` sends them to the configured Ollama service.
+- The widget stores chat messages, cached content/translations, and queued offline questions in browser `localStorage`, scoped by page path and widget ID. The widget sends the conversation to a tutor only when the learner selects the conversation-consent checkbox.
+- A tutor ticket is stored in SQLite with its conversation (if shared), page URL, note, language, status/reply, and optional phone number. Voice recordings are included only after the learner starts recording and submits the voice note. A page-context ticket stores the page URL, focused element name/HTML, headings, and only a screenshot the learner chooses to upload. These ticket records have no automatic expiry.
+- Telegram chat IDs, selected bot language, alert subscriptions, and up to 50 recent bot messages per chat are stored in the same SQLite database. Telegram also receives messages sent through the Bot API. SMS alert subscriptions store a phone hash and, when `SMS_ENCRYPTION_KEY` is configured, an encrypted number; an optional Twilio integration sends opted-in alerts. A phone number entered on a tutor ticket is stored in that ticket's SQLite row.
+- A configured `WEBHOOK_URL` receives a ticket-opened event with the ticket ID and timestamp, not the conversation text. Webhook operators may retain their own logs.
+- Desktop screen capture begins only after the learner consents, clicks the button, and chooses a source in the browser. The video stream is not recorded or stored by the app; temporary WebRTC offer/answer descriptions are stored in SQLite during signaling and are removed on stop/connection cleanup. Android Chrome uses page-context sharing instead of live capture; the optional screenshot is stored with the ticket.
+- Microphone speech recognition/recording is off until the learner presses its control. A voice note is not sent until it is attached to a tutor request.
 
-```bash
-curl -X DELETE http://localhost:8081/api/v1/escalations/TICKET_ID_HERE \
-  -H "X-Helper-Token: replace-with-a-long-random-token"
-```
+Use the helper inbox at `/helper` or the helper-token-protected `GET /api/v1/escalations` to view waiting tickets. There is no learner self-service export endpoint: an operator can back up or export the SQLite file directly. A helper can delete a ticket through the inbox or `DELETE /api/v1/escalations/{ticket_id}`. Learners can clear widget-local data through their browser's site-data controls. SMS alerts can be turned off by texting `ALERT OFF`; Telegram job alerts can be turned off with `/alerts off`. Configure a persistent database volume and backups before deployment; the default Compose API database is inside the container.
 
-### 9. `POST /api/v1/jobs/notify`
-Broadcast a new job posting to subscribed learners via Telegram and SMS alerts.
+## Cost to run (rough per month for 3,000 learners, and what works with zero budget)
 
-```bash
-curl -X POST http://localhost:8081/api/v1/jobs/notify \
-  -H "Content-Type: application/json" \
-  -H "X-Helper-Token: replace-with-a-long-random-token" \
-  -d '{
-    "job": {
-      "id": "job-201",
-      "title": "Executive VA",
-      "location": "Addis Ababa",
-      "url": "https://example.com/jobs/201",
-      "description": "Calendar management and client correspondence.",
-      "remote": true
-    }
-  }'
-```
+The code has no required paid AI service: retrieval is the default, and Telegram is optional. A rough planning allowance for 3,000 registered learners is about US$20–80 per month for a small hosted Linux server, basic backup/storage, and a domain, assuming modest traffic and no paid AI. This is not a capacity quote: concurrent usage, media storage, backups, SMS volume, and any cloud model can increase it, and the repository has not been load-tested with 3,000 learners. Twilio SMS and cloud AI use are extra variable charges; local Ollama avoids per-request API fees but needs suitable compute and electricity.
 
-### 10. `POST /sms/inbound` (and `POST /api/v1/sms/inbound`)
-Handles inbound mobile SMS messages, returning plain text &le; 160 characters.
+With zero hosting budget, run Docker Compose on an existing computer for a demo, use retrieval with `AI_PROVIDER=none`, and omit SMS and cloud AI. That does not provide a reliable public service. Telegram's Bot API and the open-source components do not remove the cost of hosting or mobile data.
 
-#### Example A: English Question
-```bash
-curl -X POST http://localhost:8081/sms/inbound \
-  -H "Content-Type: application/json" \
-  -d '{
-    "from": "+12025550199",
-    "text": "Can artificial intelligence draft routine emails?"
-  }'
-```
-*Response (`text/plain` &le; 160 chars):*
-```text
-Rather than eliminating human assistants, artificial intelligence automates repetitive duties such as drafting routine emails... (Course s2)
-```
+## Finished and not finished (honest)
 
-#### Example B: Amharic Question
-```bash
-curl -X POST http://localhost:8081/sms/inbound \
-  -H "Content-Type: application/json" \
-  -d '{
-    "from": "+251911223344",
-    "text": "አርቴፊሻል ኢንተለጀንስ የሰዎችን ሥራ ይተካል?"
-  }'
-```
-*Response (`text/plain` &le; 160 chars):*
-```text
-አርቴፊሻል ኢንተለጀንስ ወይም ዘመናዊ የኮምፒውተር ፕሮግራሞች የቨርቹዋል ረዳቶችን የዕለት ተዕለት ሥራ እያቀለሉ ነው። እነዚህ የቴክኖሎጂ መሣሪያዎች ሰዎችን ሙሉ በሙሉ አያስቀሩም ወይም አይተኩም... (Course s2)
-```
+Finished in code: the web component and retrieval API; English/Amharic course content and UI; partial Arabic/Oromo strings; tutor escalation and helper inbox; optional SMS, Telegram long polling, Ollama, webhooks, test-job JSON-LD, and consent-started desktop and page-context sharing.
 
-#### Example C: Tutor Escalation (`PERSON`)
-```bash
-curl -X POST http://localhost:8081/sms/inbound \
-  -H "Content-Type: application/json" \
-  -d '{
-    "from": "+251911223344",
-    "text": "PERSON"
-  }'
-```
-*Response:*
-```text
-A tutor will answer here. It may take until morning.
-```
+Not finished: LTI integration, a production WebRTC relay/STUN/TURN setup, a production-grade persistent database/retention/export workflow, full Arabic/Oromo/Tigrinya/Somali translations, and a measured capacity test for 3,000 learners. The job postings are fictional test data. The current Compose configuration does not persist the API database or mount the root service-worker entry point.
 
-#### Example D: Job Listings (`JOBS`)
-```bash
-curl -X POST http://localhost:8081/sms/inbound \
-  -H "Content-Type: application/json" \
-  -d '{
-    "from": "+251911223344",
-    "text": "JOBS"
-  }'
-```
-*Response:*
-```text
-Jobs: 1. Executive VA 2. Social Media Assistant 3. Customer Support VA
-```
+## Libraries and their licences (list every library and licence)
 
-#### Example E: Toggle Job Alerts (`ALERT ON` / `ALERT OFF`)
-```bash
-curl -X POST http://localhost:8081/sms/inbound \
-  -H "Content-Type: application/json" \
-  -d '{
-    "from": "+251911223344",
-    "text": "ALERT ON"
-  }'
-```
-*Response:*
-```text
-Job alerts turned on.
-```
+These are the direct third-party dependencies declared in the repository manifests; versions are ranges and there is no lockfile pinning the transitive dependency set.
 
----
+- FastAPI — MIT License.
+- Uvicorn (including its `standard` extras) — BSD 3-Clause License.
+- `cryptography` — Apache License 2.0 or BSD 3-Clause License.
+- HTTPX — BSD 3-Clause License.
+- `ruamel.yaml` — MIT License.
+- pytest (development/test dependency) — MIT License.
+- Terser (JavaScript build dependency) — BSD 2-Clause License.
 
-## How Real SMS Gateways Call `/sms/inbound`
-
-Real-world SMS telecom aggregators (e.g. Africa's Talking, Twilio, Infobip, or local Ethio Telecom VAS partners) route inbound mobile SMS to web services:
-
-1. **Webhook Registration**:
-   Configure the gateway's Inbound SMS Callback URL to point to:
-   ```text
-   https://your-public-domain.com/sms/inbound
-   ```
-2. **Payload Delivery**:
-   When a user sends an SMS to the designated shortcode, the aggregator delivers a JSON payload:
-   ```json
-   {
-     "from": "+251911223344",
-     "text": "What does a virtual assistant do?"
-   }
-   ```
-   For providers sending `application/x-www-form-urlencoded` fields (`From` and `Body`), an API Gateway or lightweight reverse proxy adapts the fields to `"from"` and `"text"`.
-3. **Synchronous Plain-Text Response**:
-   The endpoint responds synchronously with `Content-Type: text/plain` bounded to 160 characters. The SMS gateway captures this response body and delivers it back to the handset as an immediate single-part SMS reply.
-4. **Data Minimization & Privacy**:
-   The service never stores raw phone numbers in the database. Phone numbers are hashed using SHA-256 for ticket reference and subscription tracking. When outbound alerts are enabled, numbers are encrypted at rest using Fernet symmetric encryption.
-
----
-
-## Telegram Bot Integration
-
-To connect the Telegram bot:
-1. Contact [@BotFather](https://t.me/BotFather) on Telegram and create a new bot with `/newbot`.
-2. Copy the bot token into `.env`:
-   ```env
-   TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
-   ```
-3. Run the bot using the Docker Compose telegram profile:
-   ```bash
-   docker compose --profile telegram up
-   ```
-The bot uses long polling (`getUpdates`) and requires no public domain or inbound ports.
-
----
-
-## Screen Sharing & Android Support
-
-Screen sharing is initiated only with explicit learner consent. On modern desktop browsers, `getDisplayMedia()` coordinates a peer-to-peer WebRTC connection.
-
-**Android Chrome Notice:**
-Android Chrome does not support native `getDisplayMedia()`. On Android Chrome, the assistant falls back to “Show my tutor where I am”, sending page URL, focused element details, headings, and an optional user-selected screenshot.
-
----
-
-## Running Automated Tests
-
-Run the full test suite (unit tests, API coverage, retrieval, and SMS validation):
-
-```bash
-# Python backend tests
-python -m pytest tests/
-
-# Node.js search algorithm unit tests
-node --test tests/search.test.js
-```
+The browser module otherwise uses native browser APIs and repository code. The Compose images (`python:3.12-slim`, `nginx:alpine`, and optional `ollama/ollama`) are separately licensed software distributions; check their image notices and installed-package manifests when preparing a production image.

@@ -5,7 +5,7 @@ import sqlite3
 from fastapi.testclient import TestClient
 import pytest
 
-from api.main import app, DB_PATH, connect, format_sms_message, hash_phone
+from api.main import app, DB_PATH, connect, format_sms_message, hash_phone, normalize_ethiopian_phone
 
 
 @pytest.fixture(autouse=True)
@@ -116,3 +116,39 @@ def test_sms_truncation_at_word_boundary():
     assert formatted.endswith("(Course s2)")
     # Must not truncate mid-word
     assert not formatted.endswith("wor... (Course s2)")
+
+
+@pytest.mark.parametrize(("entered", "expected"), [
+    ("0911223344", "+251911223344"),
+    ("0711223344", "+251711223344"),
+    ("+251 9 1122 3344", "+251911223344"),
+    ("+251711223344", "+251711223344"),
+])
+def test_ethiopian_phone_normalization(entered, expected):
+    assert normalize_ethiopian_phone(entered) == expected
+
+
+@pytest.mark.parametrize(("entered",), [("09112233",), ("0611223344",), ("+251811223344",)])
+def test_rejects_unsupported_ethiopian_phone_shapes(entered):
+    assert normalize_ethiopian_phone(entered) is None
+
+
+def test_sms_alert_subscription_hash_uses_canonical_ethiopian_number(client):
+    national = client.post("/sms/inbound", json={"from": "0911223344", "text": "ALERT ON"})
+    international = client.post("/sms/inbound", json={"from": "+251911223344", "text": "ALERT ON"})
+    assert national.status_code == international.status_code == 200
+    canonical_hash = hash_phone("+251911223344")
+    with connect() as db:
+        rows = db.execute("SELECT phone_hash FROM sms_alerts WHERE phone_hash=?", (canonical_hash,)).fetchall()
+    assert len(rows) == 1
+
+
+def test_escalation_stores_canonical_ethiopian_phone(client):
+    response = client.post("/api/v1/escalations", json={
+        "conversation": [], "language": "en", "page": "http://localhost/lesson",
+        "note": "", "phone": "0711223344"
+    })
+    assert response.status_code == 201
+    with connect() as db:
+        row = db.execute("SELECT phone FROM escalations WHERE id=?", (response.json()["ticketId"],)).fetchone()
+    assert row["phone"] == "+251711223344"

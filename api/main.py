@@ -494,7 +494,9 @@ async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTex
 
     text = raw_text.strip()
     from_number = str(payload.get("from") or "").strip()
-    phone_hash = hash_phone(from_number) if from_number else ""
+    normalized_phone = normalize_ethiopian_phone(from_number)
+    stored_phone = normalized_phone or from_number
+    phone_hash = hash_phone(stored_phone) if stored_phone else ""
     lang = detect_language(text)
     cmd = text.upper()
 
@@ -536,7 +538,7 @@ async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTex
             if phone_hash:
                 db.execute(
                     "INSERT OR REPLACE INTO sms_alerts(phone_hash, active, phone_ciphertext, updated_at) VALUES(?, ?, ?, ?)",
-                    (phone_hash, active, encrypt_sms_phone(from_number) if active and from_number else None, now_iso),
+                    (phone_hash, active, encrypt_sms_phone(stored_phone) if active and stored_phone else None, now_iso),
                 )
 
         if active == 1:

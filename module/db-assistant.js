@@ -215,6 +215,7 @@
     connectedCallback() {
       document.addEventListener("focusin", this._rememberPageFocus, true);
       if (this._onlineHandler) window.addEventListener("online", this._onlineHandler);
+      if (this._escapeHandler) document.addEventListener("keydown", this._escapeHandler);
       if (this._built) return;
       this._built = true;
       this._storageKey = `db-assistant:${location.pathname}:${this.id || "default"}`;
@@ -230,6 +231,7 @@
 
     disconnectedCallback() {
       document.removeEventListener("focusin", this._rememberPageFocus, true);
+      document.removeEventListener("keydown", this._escapeHandler);
       this._stopScreenShare(false);
       try { this._recognition?.stop(); } catch { /* Recognition may already be closed. */ }
       try { if (this._mediaRecorder?.state === "recording") this._mediaRecorder.stop(); } catch { /* Recorder may already be closed. */ }
@@ -353,7 +355,7 @@
           *, *::before, *::after { box-sizing: border-box; }
           button, input, textarea { font: inherit; letter-spacing: normal; text-transform: none; }
           button { min-width: 44px; min-height: 44px; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
-          button:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex="-1"]:focus-visible, a:focus-visible { outline: 3px solid #1a1a1a; outline-offset: 2px; }
+          button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex="-1"]:focus-visible, a:focus-visible { outline: 3px solid var(--assistant-focus, #1a1a1a); outline-offset: 2px; }
           .launcher { position: fixed; z-index: 2147483647; inset-inline-end: 16px; inset-block-end: 16px; max-width: calc(100vw - 32px); background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); }
           .panel { position: fixed; z-index: 2147483646; inset-inline-end: 16px; inset-block-end: 76px; width: min(32rem, calc(100vw - 32px)); max-height: min(70vh, 42rem); overflow: auto; border: 2px solid var(--assistant-primary, #002b56); border-radius: 8px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); padding: 16px; }
           .panel[hidden] { display: none; }
@@ -377,7 +379,7 @@
           .course-link:hover, .course-link:focus { text-decoration: none; }
           .debug-score { font-size: 0.8em; color: #64748b; margin-top: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
           .person-action { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 14px; background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); border-radius: 4px; font-weight: 600; cursor: pointer; }
-          .person-action:focus-visible { outline: 3px solid #1a1a1a; outline-offset: 2px; }
+          .person-action:focus-visible { outline: 3px solid var(--assistant-focus, #1a1a1a); outline-offset: 2px; }
           .voice-controls { display: flex; flex-wrap: wrap; gap: 8px; }
           .listen-button { display: block; margin-top: 8px; }
           .voice-status { min-height: 1.5em; margin: 0; }
@@ -400,6 +402,8 @@
           input[type="tel"] { width: 100%; min-height: 44px; padding: 8px 12px; border: 2px solid var(--assistant-foreground, #1a1a1a); border-radius: 4px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); }
           textarea::placeholder { color: #595959; opacity: 1; }
           .error { margin: 0; color: #7f1d1d; }
+          :host([theme="dark"]) .error { color: #fca5a5; }
+          :host([theme="dark"]) textarea::placeholder { color: #cbd5e1; }
           #send { background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); }
           @media (max-width: 480px) {
             .panel { inset-inline: 0; inset-block-end: 0; width: 100%; max-height: 80vh; border-radius: 8px 8px 0 0; padding: 12px; }
@@ -418,7 +422,7 @@
               <button type="button" class="person" id="person"></button>
               <button type="button" class="secondary accommodation-open" id="accommodation-open"></button>
             </header>
-            <div class="language" aria-label="Language"><span class="language-label" id="language-label"></span>
+            <div class="language" role="group" aria-labelledby="language-label"><span class="language-label" id="language-label"></span>
               <button type="button" class="secondary" id="english" lang="en" aria-pressed="false">English</button>
               <button type="button" class="secondary" id="amharic" lang="am" aria-pressed="false">አማርኛ</button>
             </div>
@@ -434,7 +438,7 @@
                 <button type="button" class="secondary" id="read-back" hidden></button>
               </div>
               <p id="voice-status" class="voice-status" role="status" aria-live="polite" aria-atomic="true"></p>
-              <div class="voice-note" id="voice-note" hidden><strong id="voice-note-label"></strong><audio id="voice-player" controls></audio></div>
+              <div class="voice-note" id="voice-note" hidden><strong id="voice-note-label"></strong><audio id="voice-player" aria-labelledby="voice-note-label" controls></audio></div>
               <button type="submit" id="send"></button>
             </form>
             <form id="accommodation-form" class="escalation" novalidate hidden>
@@ -519,11 +523,12 @@
     }
 
     _applyTheme() {
-      const themes = { light: ["#002b56", "#fff", "#1a1a1a"], dark: ["#79b8ff", "#171717", "#f5f5f5"] };
+      const themes = { light: ["#002b56", "#fff", "#1a1a1a", "#1a1a1a"], dark: ["#005a9c", "#171717", "#f5f5f5", "#fff"] };
       const values = themes[this.getAttribute("theme")] || themes.light;
       this.style.setProperty("--assistant-primary", values[0]);
       this.style.setProperty("--assistant-background", values[1]);
       this.style.setProperty("--assistant-foreground", values[2]);
+      this.style.setProperty("--assistant-focus", values[3]);
     }
 
     _bind() {
@@ -542,7 +547,11 @@
       e.input.addEventListener("input", () => {
         if (this._errorKey) this._setError("");
       });
-      e.escalationPhone.addEventListener("input", () => { e.phoneError.hidden = true; });
+      e.escalationPhone.addEventListener("input", () => {
+        e.phoneError.hidden = true;
+        e.escalationPhone.removeAttribute("aria-invalid");
+        e.escalationPhone.removeAttribute("aria-describedby");
+      });
       e.english.addEventListener("click", () => this.setAttribute("lang", "en"));
       e.amharic.addEventListener("click", () => this.setAttribute("lang", "am"));
       e.person.addEventListener("click", () => this._openEscalation());
@@ -556,12 +565,13 @@
       e.escalation.addEventListener("submit", (event) => this._submitEscalation(event));
       e.accommodationForm.addEventListener("submit", (event) => this._submitAccommodation(event));
       e.accommodationJob.addEventListener("change", () => this._populateAccommodationOptions());
-      this.addEventListener("keydown", (event) => {
+      this._escapeHandler = (event) => {
         if (event.key === "Escape" && !e.panel.hidden) {
           event.preventDefault();
           this._close();
         }
-      });
+      };
+      document.addEventListener("keydown", this._escapeHandler);
     }
 
     _restore() {
@@ -1352,6 +1362,8 @@
         e.phoneError.textContent = this._pack.strings.phoneInvalid || en.strings.phoneInvalid;
         e.phoneError.lang = this._pack.lang;
         e.phoneError.hidden = false;
+        e.escalationPhone.setAttribute("aria-invalid", "true");
+        e.escalationPhone.setAttribute("aria-describedby", "phone-error");
         e.escalationPhone.focus();
         return;
       }

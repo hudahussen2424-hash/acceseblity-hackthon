@@ -17,6 +17,15 @@ const __dirname = path.dirname(__filename);
 // Load the sections from demo/data/content.json
 const contentPath = path.resolve(__dirname, "../demo/data/content.json");
 const sections = JSON.parse(fs.readFileSync(contentPath, "utf-8"));
+const jobsPath = path.resolve(__dirname, "../demo/data/jobs.json");
+const jobs = JSON.parse(fs.readFileSync(jobsPath, "utf-8")).map((job) => ({
+  ...job,
+  type: "job",
+  text: {
+    en: [job.description, job.remote ? "Remote work telecommute" : "On site work", job.location, ...job.accommodations].join(". "),
+    am: [job.description, job.remote ? "Remote work telecommute" : "On site work", job.location, ...job.accommodations].join(". ")
+  }
+}));
 
 describe("Search Module Constants & Tokenization", () => {
   it("exports a THRESHOLD constant defaulting to 0.25", () => {
@@ -232,4 +241,24 @@ describe("Amharic Search Tests", () => {
       assert.strictEqual(res.best, null, `Expected null best for "${q}", got score: ${res.others[0]?.score}`);
     });
   }
+});
+
+describe("Job source search tests", () => {
+  it("finds test jobs offering an interpreter", () => {
+    const result = search("Which jobs have an interpreter?", jobs, "en");
+    const matches = [result.best, ...result.others]
+      .filter((match) => match && match.score >= THRESHOLD)
+      .map((match) => match.section.id);
+    assert.ok(matches.includes("test-inbox-support"));
+    assert.ok(matches.includes("test-calendar-coordinator"));
+    assert.ok(matches.includes("test-project-notes"));
+    assert.ok(matches.every((id) => jobs.some((job) => job.id === id && job.url)));
+  });
+
+  it("finds remote jobs and returns their source URLs", () => {
+    const result = search("remote jobs", jobs, "en");
+    const matches = [result.best, ...result.others].filter((match) => match && match.score >= THRESHOLD);
+    assert.ok(matches.length > 0);
+    assert.ok(matches.every(({ section }) => section.remote && section.url));
+  });
 });

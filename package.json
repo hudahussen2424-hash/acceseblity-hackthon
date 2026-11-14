@@ -5,9 +5,13 @@
   "scripts": {
     "test": "node --test tests/search.test.js",
     "build:module": "node scripts/build-module.mjs",
-    "check:module-size": "node scripts/check-module-size.mjs"
+    "check:module-size": "node scripts/check-module-size.mjs",
+    "test:e2e": "playwright test",
+    "test:axe": "playwright test tests/e2e/axe.spec.js"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.56.1",
     "terser": "^5.31.0"
   }
 }
