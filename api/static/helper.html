@@ -53,8 +53,13 @@
 
     function makeTicket(ticket) {
       const item = document.createElement("li"); item.className = "ticket";
-      const title = document.createElement("h2"); title.textContent = `Request ${ticket.ticketId}`; item.append(title);
+      const title = document.createElement("h2"); title.textContent = `${ticket.type === "accommodation" ? "Accommodation request" : "Request"} ${ticket.ticketId}`; item.append(title);
       const meta = document.createElement("p"); meta.textContent = `Language: ${ticket.language} · Page: ${ticket.page}`; item.append(meta);
+      if (ticket.type === "accommodation") {
+        const privateDetails = document.createElement("p");
+        privateDetails.textContent = `Private to tutor · Job: ${ticket.jobId || "Not specified"} · Accommodation: ${ticket.accommodation || "Not specified"}`;
+        item.append(privateDetails);
+      }
       if (ticket.note) { const note = document.createElement("p"); note.textContent = `Learner note: ${ticket.note}`; item.append(note); }
       const conversationTitle = document.createElement("h3"); conversationTitle.textContent = "Shared conversation"; item.append(conversationTitle);
       const conversation = document.createElement("ul"); conversation.className = "conversation";

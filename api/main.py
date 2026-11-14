@@ -8,12 +8,14 @@ import json
 import os
 import re
 import sqlite3
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,6 +37,13 @@ def load_env_file() -> None:
 
 
 load_env_file()
+root_env_file = ROOT.parent / ".env"
+if root_env_file.exists():
+    for env_line in root_env_file.read_text(encoding="utf-8").splitlines():
+        env_line = env_line.strip()
+        if env_line and not env_line.startswith("#") and "=" in env_line:
+            env_key, env_value = env_line.split("=", 1)
+            os.environ.setdefault(env_key.strip(), env_value.strip().strip('"\''))
 DB_PATH = Path(os.getenv("ESCALATIONS_DB", ROOT / "escalations.sqlite3"))
 app = FastAPI(title="Learning assistant escalations")
 
@@ -83,6 +92,31 @@ def hash_phone(phone: str | None) -> str:
     if not normalized:
         normalized = str(phone).strip()
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def sms_cipher():
+    key = os.getenv("SMS_ENCRYPTION_KEY", "").strip()
+    if not key:
+        return None
+    try:
+        return Fernet(key.encode("ascii"))
+    except (ValueError, UnicodeEncodeError):
+        return None
+
+
+def encrypt_sms_phone(phone: str) -> str | None:
+    cipher = sms_cipher()
+    return cipher.encrypt(phone.encode("utf-8")).decode("ascii") if cipher else None
+
+
+def decrypt_sms_phone(ciphertext: str) -> str | None:
+    cipher = sms_cipher()
+    if not cipher:
+        return None
+    try:
+        return cipher.decrypt(ciphertext.encode("ascii")).decode("utf-8")
+    except (InvalidToken, ValueError, UnicodeDecodeError):
+        return None
     if not phone:
         return ""
     normalized = re.sub(r"[^\d]", "", str(phone))
@@ -134,6 +168,37 @@ def format_sms_message(body: str, source_code: str | None = None) -> str:
     return result[:160]
 
 
+def send_sms_job_alerts(body: str) -> dict[str, int]:
+    sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+    from_number = os.getenv("TWILIO_FROM_NUMBER", "").strip()
+    if not (sid and auth_token and from_number):
+        return {"sent": 0, "failed": 0, "skipped": 0}
+    with connect() as db:
+        subscribers = db.execute(
+            "SELECT phone_ciphertext FROM sms_alerts WHERE active=1 AND phone_ciphertext IS NOT NULL"
+        ).fetchall()
+    sent = failed = skipped = 0
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+    auth = base64.b64encode(f"{sid}:{auth_token}".encode("utf-8")).decode("ascii")
+    for row in subscribers:
+        phone = decrypt_sms_phone(row["phone_ciphertext"])
+        if not phone:
+            skipped += 1
+            continue
+        data = urllib.parse.urlencode({"To": phone, "From": from_number, "Body": format_sms_message(body)}).encode("utf-8")
+        request = urllib.request.Request(url, data=data, headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"}, method="POST")
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                if 200 <= response.status < 300:
+                    sent += 1
+                else:
+                    failed += 1
+        except Exception:
+            failed += 1
+    return {"sent": sent, "failed": failed, "skipped": skipped}
+
+
 def connect() -> sqlite3.Connection:
     db = sqlite3.connect(DB_PATH)
     db.row_factory = sqlite3.Row
@@ -145,20 +210,28 @@ def initialize() -> None:
     with connect() as db:
         db.execute("""CREATE TABLE IF NOT EXISTS escalations (
             id TEXT PRIMARY KEY, conversation TEXT NOT NULL, language TEXT NOT NULL,
-            page TEXT NOT NULL, note TEXT NOT NULL, audio_json TEXT, reply TEXT, created_at TEXT NOT NULL,
+            page TEXT NOT NULL, note TEXT NOT NULL, audio_json TEXT, type TEXT NOT NULL DEFAULT 'person',
+            job_id TEXT, accommodation TEXT, reply TEXT, created_at TEXT NOT NULL,
             replied_at TEXT, status TEXT NOT NULL DEFAULT 'waiting'
         )""")
         columns = {row[1] for row in db.execute("PRAGMA table_info(escalations)")}
         if "audio_json" not in columns:
             db.execute("ALTER TABLE escalations ADD COLUMN audio_json TEXT")
+        for column, definition in (("type", "TEXT NOT NULL DEFAULT 'person'"), ("job_id", "TEXT"), ("accommodation", "TEXT")):
+            if column not in columns:
+                db.execute(f"ALTER TABLE escalations ADD COLUMN {column} {definition}")
         db.execute("""CREATE TABLE IF NOT EXISTS content_sections (
             id TEXT PRIMARY KEY, section_json TEXT NOT NULL
         )""")
         db.execute("""CREATE TABLE IF NOT EXISTS sms_alerts (
             phone_hash TEXT PRIMARY KEY,
             active INTEGER NOT NULL DEFAULT 1,
+            phone_ciphertext TEXT,
             updated_at TEXT NOT NULL
         )""")
+        sms_columns = {row[1] for row in db.execute("PRAGMA table_info(sms_alerts)")}
+        if "phone_ciphertext" not in sms_columns:
+            db.execute("ALTER TABLE sms_alerts ADD COLUMN phone_ciphertext TEXT")
         db.execute("""CREATE TABLE IF NOT EXISTS jobs (
             id TEXT PRIMARY KEY,
             title_en TEXT NOT NULL,
@@ -218,18 +291,41 @@ def notify_webhook(ticket_id: str, payload: dict[str, Any]) -> None:
 def indexed_sections() -> list[dict[str, Any]]:
     with connect() as db:
         rows = db.execute("SELECT section_json FROM content_sections ORDER BY rowid").fetchall()
-    return [json.loads(row["section_json"]) for row in rows]
+    sections = [json.loads(row["section_json"]) for row in rows]
+    for section in sections:
+        if isinstance(section, dict):
+            section.setdefault("type", "lesson")
+    try:
+        jobs = json.loads(JOBS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        jobs = []
+    if isinstance(jobs, list):
+        known = {item.get("id") for item in sections if isinstance(item, dict)}
+        for job in jobs:
+            if not isinstance(job, dict) or job.get("id") in known:
+                continue
+            accommodations = job.get("accommodations", [])
+            details = [job.get("description", ""), "remote work" if job.get("remote") else "on site", job.get("location", ""), *accommodations]
+            sections.append({
+                **job,
+                "type": "job",
+                "text": {"en": ". ".join(str(value) for value in details if value),
+                         "am": ". ".join(str(value) for value in details if value)},
+            })
+    return sections
 
 
 def save_escalation_record(
-    conversation: list[dict[str, Any]], language: str, page: str, note: str, audio_json: str | None = None
+    conversation: list[dict[str, Any]], language: str, page: str, note: str,
+    audio_json: str | None = None, ticket_type: str = "person",
+    job_id: str | None = None, accommodation: str | None = None,
 ) -> str:
     ticket_id = str(uuid4())
     created = datetime.now(timezone.utc).isoformat()
     with connect() as db:
         db.execute(
-            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,created_at) VALUES(?,?,?,?,?,?,?)",
-            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, created),
+            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, ticket_type, job_id, accommodation, created),
         )
     return ticket_id
 
@@ -258,6 +354,10 @@ async def index_content(request: Request) -> dict[str, int]:
         if isinstance(text, dict) and any(not isinstance(value, str) for value in text.values()):
             plain_bad("Translated course text must be words in each language field.")
         normalized = {"id": section_id.strip(), "title": title.strip(), "url": url, "text": text}
+        source_type = section.get("type", "lesson")
+        if source_type not in ("lesson", "job"):
+            plain_bad("Section type must be lesson or job.")
+        normalized["type"] = source_type
         rows.append((normalized["id"], json.dumps(normalized, ensure_ascii=False)))
     with connect() as db:
         db.executemany("INSERT OR REPLACE INTO content_sections(id,section_json) VALUES(?,?)", rows)
@@ -277,6 +377,27 @@ async def ask(payload: dict[str, Any]) -> dict[str, Any]:
     if language not in ("en", "am"):
         plain_bad("Language must be en or am.")
     return await answer_question(question.strip(), language, indexed_sections())
+
+
+@app.post("/api/v1/jobs/notify")
+def notify_job(payload: dict[str, Any], x_helper_token: str | None = Header(default=None)) -> dict[str, Any]:
+    helper_auth(x_helper_token)
+    job = payload.get("job", payload)
+    if not isinstance(job, dict):
+        plain_bad("Send one job object.")
+    for field in ("id", "title", "location", "url", "description"):
+        if not isinstance(job.get(field), str) or not job[field].strip():
+            plain_bad(f"Job needs a {field}.")
+    if not isinstance(job.get("remote"), bool):
+        plain_bad("Job remote must be true or false.")
+    message = f"New test job: {job['title']} · {'Remote' if job['remote'] else 'On site'} · {job['location']} · {job['url']}"
+    try:
+        from . import telegram_bot
+        telegram = telegram_bot.notify_job_subscribers(job)
+    except Exception:
+        telegram = {"sent": 0, "failed": 1}
+    sms = send_sms_job_alerts(message)
+    return {"telegram": telegram, "sms": sms}
 
 
 @app.post("/sms/inbound", response_class=PlainTextResponse)
@@ -336,8 +457,8 @@ async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTex
 
             if phone_hash:
                 db.execute(
-                    "INSERT OR REPLACE INTO sms_alerts(phone_hash, active, updated_at) VALUES(?, ?, ?)",
-                    (phone_hash, active, now_iso),
+                    "INSERT OR REPLACE INTO sms_alerts(phone_hash, active, phone_ciphertext, updated_at) VALUES(?, ?, ?, ?)",
+                    (phone_hash, active, encrypt_sms_phone(from_number) if active else None, now_iso),
                 )
 
         if active == 1:
@@ -370,6 +491,7 @@ def ticket_dict(row: sqlite3.Row) -> dict[str, Any]:
         "language": row["language"], "page": row["page"], "note": row["note"],
         "reply": row["reply"], "status": row["status"], "createdAt": row["created_at"],
         "audio": json.loads(row["audio_json"]) if row["audio_json"] else None,
+        "type": row["type"], "jobId": row["job_id"], "accommodation": row["accommodation"],
     }
 
 
@@ -388,6 +510,13 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
     if not isinstance(note, str) or len(note) > 4000:
         plain_bad("The note must be 4000 characters or fewer.")
     audio = payload.get("audio")
+    ticket_type = payload.get("type", "person")
+    job_id, accommodation = payload.get("jobId"), payload.get("accommodation")
+    if ticket_type not in ("person", "accommodation"):
+        plain_bad("Ticket type must be person or accommodation.")
+    if ticket_type == "accommodation":
+        if not isinstance(job_id, str) or not job_id.strip() or not isinstance(accommodation, str) or not accommodation.strip():
+            plain_bad("Choose a job and the accommodation you need.")
     audio_json = None
     if audio is not None:
         if not isinstance(audio, dict) or not isinstance(audio.get("mimeType"), str) or not isinstance(audio.get("dataUrl"), str):
@@ -402,7 +531,11 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
         if len(decoded_audio) > 8_000_000:
             plain_bad("Voice note must be smaller than 8 MB.")
         audio_json = json.dumps({"mimeType": mime_type, "dataUrl": data_url})
-    ticket_id = save_escalation_record(conversation, language, page, note, audio_json)
+    ticket_id = save_escalation_record(
+        conversation, language, page, note, audio_json, ticket_type,
+        job_id.strip() if isinstance(job_id, str) else None,
+        accommodation.strip() if isinstance(accommodation, str) else None,
+    )
     background.add_task(notify_webhook, ticket_id, {"page": page})
     return {"ticketId": ticket_id}
 

@@ -46,7 +46,8 @@
       accommodationNote: "Optional note",
       sendAccommodation: "Ask a tutor about this accommodation",
       accommodationSent: "Your request was sent privately to a tutor.",
-      accommodationFailed: "Your request could not be sent. Please try again."
+      accommodationFailed: "Your request could not be sent. Please try again.",
+      describeOther: "Describe the accommodation you need in the note."
     }
   };
 
@@ -93,7 +94,8 @@
       accommodationNote: "አማራጭ ማስታወሻ",
       sendAccommodation: "ስለዚህ ማስተካከያ አስተማሪን ይጠይቁ",
       accommodationSent: "ጥያቄዎ በግል ለአስተማሪ ተልኳል።",
-      accommodationFailed: "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።"
+      accommodationFailed: "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።",
+      describeOther: "በማስታወሻው የሚፈልጉትን ማስተካከያ ይግለጹ።"
     }
   };
 
@@ -197,7 +199,8 @@
       try {
         const resp = await fetch(url);
         if (resp.ok) {
-          this._sections = await resp.json();
+          const sections = await resp.json();
+          this._sections = Array.isArray(sections) ? sections.map((section) => ({ ...section, type: section.type || "lesson" })) : [];
         }
       } catch (err) {
         console.warn("Could not load content sections from", url, err);
@@ -256,7 +259,7 @@
           *, *::before, *::after { box-sizing: border-box; }
           button, textarea { font: inherit; letter-spacing: normal; text-transform: none; }
           button { min-width: 44px; min-height: 44px; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
-          button:focus-visible, textarea:focus-visible, [tabindex="-1"]:focus-visible, a:focus-visible { outline: 3px solid #1a1a1a; outline-offset: 2px; }
+          button:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex="-1"]:focus-visible, a:focus-visible { outline: 3px solid #1a1a1a; outline-offset: 2px; }
           .launcher { position: fixed; z-index: 2147483647; right: 16px; bottom: 16px; max-width: calc(100vw - 32px); background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); }
           .panel { position: fixed; z-index: 2147483646; right: 16px; bottom: 76px; width: min(32rem, calc(100vw - 32px)); max-height: min(70vh, 42rem); overflow: auto; border: 2px solid var(--assistant-primary, #002b56); border-radius: 8px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); padding: 16px; }
           .panel[hidden] { display: none; }
@@ -292,6 +295,7 @@
           .consent input { width: 20px; height: 20px; flex: none; margin: 2px 0 0; }
           .voice-button[aria-pressed="true"] { background: #7f1d1d; color: #fff; border-color: #7f1d1d; }
           form, .field { display: flex; flex-direction: column; gap: 8px; }
+          select { min-height: 44px; padding: 8px 12px; font: inherit; color: var(--assistant-foreground, #1a1a1a); background: var(--assistant-background, #fff); border: 2px solid var(--assistant-foreground, #1a1a1a); border-radius: 4px; }
           textarea { width: 100%; min-height: 4.5rem; max-height: 35vh; resize: vertical; padding: 8px 12px; border: 2px solid var(--assistant-foreground, #1a1a1a); border-radius: 4px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); }
           textarea::placeholder { color: #595959; opacity: 1; }
           .error { margin: 0; color: #7f1d1d; }
@@ -942,15 +946,21 @@
         e.accommodationStatus.textContent = this._pack.strings.accommodationFailed;
         return;
       }
+      const note = e.accommodationNote.value.trim();
+      if (e.accommodationChoice.value === "Other" && !note) {
+        e.accommodationStatus.textContent = this._pack.strings.describeOther;
+        e.accommodationNote.focus();
+        return;
+      }
       try {
         const payload = {
           type: "accommodation",
           jobId: job.id,
-          accommodation: e.accommodationChoice.value,
+          accommodation: e.accommodationChoice.value === "Other" ? `Other: ${note}` : e.accommodationChoice.value,
           conversation: [],
           language: this._pack.lang,
           page: location.href,
-          note: e.accommodationNote.value.trim()
+          note
         };
         const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
         const response = await fetch(`${base}/api/v1/escalations`, {

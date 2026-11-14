@@ -41,6 +41,7 @@
     "accommodationNote": "Optional note",
     "sendAccommodation": "Ask a tutor about this accommodation",
     "accommodationSent": "Your request was sent privately to a tutor.",
-    "accommodationFailed": "Your request could not be sent. Please try again."
+    "accommodationFailed": "Your request could not be sent. Please try again.",
+    "describeOther": "Describe the accommodation you need in the note."
   }
 }

@@ -128,6 +128,30 @@ def set_alert_subscription(chat_id: int, enabled: bool) -> None:
             )
 
 
+def notify_job_subscribers(job: dict[str, Any]) -> dict[str, int]:
+    """Send a public job alert to chats subscribed with /alerts on."""
+    initialize_storage()
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if not token:
+        return {"sent": 0, "failed": 0}
+    with api_main.connect() as db:
+        chats = db.execute("SELECT chat_id FROM telegram_alert_subscribers").fetchall()
+    title = str(job.get("title", "New job"))
+    location = str(job.get("location", ""))
+    remote = "Remote" if job.get("remote") else "On site"
+    description = str(job.get("description", ""))
+    url = source_link(str(job.get("url", "")))
+    message = f"New test job: {title}\n{remote} · {location}\n{description}\n{url}"[:3900]
+    sent = failed = 0
+    for chat in chats:
+        try:
+            telegram_call(token, "sendMessage", {"chat_id": chat["chat_id"], "text": message})
+            sent += 1
+        except RuntimeError:
+            failed += 1
+    return {"sent": sent, "failed": failed}
+
+
 def source_link(url: str) -> str:
     if urllib.parse.urlsplit(url).scheme in {"http", "https"}:
         return url

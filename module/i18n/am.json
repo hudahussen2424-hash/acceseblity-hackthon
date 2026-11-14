@@ -41,6 +41,7 @@
     "accommodationNote": "አማራጭ ማስታወሻ",
     "sendAccommodation": "ስለዚህ ማስተካከያ አስተማሪን ይጠይቁ",
     "accommodationSent": "ጥያቄዎ በግል ለአስተማሪ ተልኳል።",
-    "accommodationFailed": "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።"
+    "accommodationFailed": "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።",
+    "describeOther": "በማስታወሻው የሚፈልጉትን ማስተካከያ ይግለጹ።"
   }
 }
