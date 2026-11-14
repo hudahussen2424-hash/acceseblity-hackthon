@@ -2,13 +2,16 @@
   "lang": "am",
   "dir": "ltr",
   "strings": {
-    "launcher": "የትምህርት ረዳቱን ክፈት",
+    "launcher": "የትምህርት ረዳትን ክፈት",
     "dialogTitle": "የትምህርት ረዳት",
     "close": "ዝጋ",
-    "greeting": "ስለዚህ ትምህርት ጥያቄ ይጻፉ። መልሱ ከትምህርቱ ጽሑፍ ይመጣል።",
-    "questionLabel": "ጥያቄዎ፣ ግዴታ ነው",
+    "greeting": "ስለዚህ ትምህርት ጥያቄ ይጠይቁ። መልሱ ከትምህርቱ ጽሑፍ ይመጣል።",
+    "questionLabel": "ጥያቄዎ",
     "questionPlaceholder": "ስለ ትምህርቱ ይጠይቁ",
-    "ask": "ጠይቅ",
-    "errorEmpty": "ጥያቄ ያስገቡ።"
+    "ask": "ላክ",
+    "errorEmpty": "ከመላክዎ በፊት ጥያቄ ያስገቡ።",
+    "person": "ከሰው ጋር ይነጋገሩ",
+    "language": "ቋንቋ",
+    "you": "እርስዎ"
   }
 }
