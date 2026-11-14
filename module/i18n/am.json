@@ -1,0 +1,14 @@
+{
+  "lang": "am",
+  "dir": "ltr",
+  "strings": {
+    "launcher": "የትምህርት ረዳቱን ክፈት",
+    "dialogTitle": "የትምህርት ረዳት",
+    "close": "ዝጋ",
+    "greeting": "ስለዚህ ትምህርት ጥያቄ ይጻፉ። መልሱ ከትምህርቱ ጽሑፍ ይመጣል።",
+    "questionLabel": "ጥያቄዎ፣ ግዴታ ነው",
+    "questionPlaceholder": "ስለ ትምህርቱ ይጠይቁ",
+    "ask": "ጠይቅ",
+    "errorEmpty": "ጥያቄ ያስገቡ።"
+  }
+}

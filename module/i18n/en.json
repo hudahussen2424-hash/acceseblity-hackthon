@@ -1,0 +1,14 @@
+{
+  "lang": "en",
+  "dir": "ltr",
+  "strings": {
+    "launcher": "Open learning assistant",
+    "dialogTitle": "Learning assistant",
+    "close": "Close",
+    "greeting": "Ask a question about this lesson. The answer comes from the lesson text.",
+    "questionLabel": "Your question, required",
+    "questionPlaceholder": "Ask about this lesson",
+    "ask": "Ask",
+    "errorEmpty": "Enter a question."
+  }
+}
