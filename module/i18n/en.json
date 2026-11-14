@@ -15,6 +15,23 @@
     "you": "You",
     "assistant": "Assistant",
     "notFound": "I could not find this in the course",
-    "readInCourse": "Read in the course"
+    "readInCourse": "Read in the course",
+    "microphone": "Use microphone",
+    "stop": "Stop",
+    "listening": "Listening with speech recognition. Review the words before sending.",
+    "stopped": "Listening stopped.",
+    "recording": "Recording a voice note for a tutor. It will not be sent to the assistant.",
+    "recordedReady": "Voice note ready. It will only be sent to a tutor.",
+    "speechAdded": "Speech added to your question. Review it before sending.",
+    "voiceUnavailable": "Speech recognition failed and voice recording is unavailable.",
+    "readBack": "Read it back",
+    "listen": "Listen",
+    "noAmharicVoice": "No Amharic voice on this phone",
+    "escalationNote": "Optional note",
+    "consent": "Share this conversation with a tutor",
+    "sendEscalation": "Send to a person",
+    "voiceNote": "Voice note for tutor",
+    "escalationSent": "Your request was sent to a tutor.",
+    "escalationFailed": "Your request could not be sent. Check your connection and try again."
   }
 }

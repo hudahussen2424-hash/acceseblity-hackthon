@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import base64
+import binascii
 import os
 import sqlite3
 import urllib.request
@@ -46,9 +48,12 @@ def initialize() -> None:
     with connect() as db:
         db.execute("""CREATE TABLE IF NOT EXISTS escalations (
             id TEXT PRIMARY KEY, conversation TEXT NOT NULL, language TEXT NOT NULL,
-            page TEXT NOT NULL, note TEXT NOT NULL, reply TEXT, created_at TEXT NOT NULL,
+            page TEXT NOT NULL, note TEXT NOT NULL, audio_json TEXT, reply TEXT, created_at TEXT NOT NULL,
             replied_at TEXT, status TEXT NOT NULL DEFAULT 'waiting'
         )""")
+        columns = {row[1] for row in db.execute("PRAGMA table_info(escalations)")}
+        if "audio_json" not in columns:
+            db.execute("ALTER TABLE escalations ADD COLUMN audio_json TEXT")
         db.execute("""CREATE TABLE IF NOT EXISTS content_sections (
             id TEXT PRIMARY KEY, section_json TEXT NOT NULL
         )""")
@@ -97,6 +102,19 @@ def indexed_sections() -> list[dict[str, Any]]:
     with connect() as db:
         rows = db.execute("SELECT section_json FROM content_sections ORDER BY rowid").fetchall()
     return [json.loads(row["section_json"]) for row in rows]
+
+
+def save_escalation_record(
+    conversation: list[dict[str, Any]], language: str, page: str, note: str, audio_json: str | None = None
+) -> str:
+    ticket_id = str(uuid4())
+    created = datetime.now(timezone.utc).isoformat()
+    with connect() as db:
+        db.execute(
+            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,created_at) VALUES(?,?,?,?,?,?,?)",
+            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, created),
+        )
+    return ticket_id
 
 
 @app.post("/api/v1/content")
@@ -149,6 +167,7 @@ def ticket_dict(row: sqlite3.Row) -> dict[str, Any]:
         "ticketId": row["id"], "conversation": json.loads(row["conversation"]),
         "language": row["language"], "page": row["page"], "note": row["note"],
         "reply": row["reply"], "status": row["status"], "createdAt": row["created_at"],
+        "audio": json.loads(row["audio_json"]) if row["audio_json"] else None,
     }
 
 
@@ -166,11 +185,22 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
         plain_bad("Add the page address.")
     if not isinstance(note, str) or len(note) > 4000:
         plain_bad("The note must be 4000 characters or fewer.")
-    ticket_id = str(uuid4())
-    created = datetime.now(timezone.utc).isoformat()
-    with connect() as db:
-        db.execute("INSERT INTO escalations(id,conversation,language,page,note,created_at) VALUES(?,?,?,?,?,?)",
-                   (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), created))
+    audio = payload.get("audio")
+    audio_json = None
+    if audio is not None:
+        if not isinstance(audio, dict) or not isinstance(audio.get("mimeType"), str) or not isinstance(audio.get("dataUrl"), str):
+            plain_bad("Voice note must include its audio type and recording.")
+        mime_type, data_url = audio["mimeType"], audio["dataUrl"]
+        if not mime_type.startswith("audio/") or len(data_url) > 12_000_000 or not data_url.startswith(f"data:{mime_type};base64,"):
+            plain_bad("Voice note format is not supported or is too large.")
+        try:
+            decoded_audio = base64.b64decode(data_url.split(",", 1)[1], validate=True)
+        except (binascii.Error, ValueError):
+            plain_bad("Voice note data is not valid.")
+        if len(decoded_audio) > 8_000_000:
+            plain_bad("Voice note must be smaller than 8 MB.")
+        audio_json = json.dumps({"mimeType": mime_type, "dataUrl": data_url})
+    ticket_id = save_escalation_record(conversation, language, page, note, audio_json)
     background.add_task(notify_webhook, ticket_id, {"page": page})
     return {"ticketId": ticket_id}
 

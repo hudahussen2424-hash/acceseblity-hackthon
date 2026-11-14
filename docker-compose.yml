@@ -1,0 +1,14 @@
+services:
+  telegram-bot:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env}
+      ESCALATIONS_DB: /data/escalations.sqlite3
+    restart: unless-stopped
+    volumes:
+      - telegram-data:/data
+
+volumes:
+  telegram-data:

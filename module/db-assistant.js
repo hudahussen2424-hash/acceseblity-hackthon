@@ -20,7 +20,24 @@
       you: "You",
       assistant: "Assistant",
       notFound: "I could not find this in the course",
-      readInCourse: "Read in the course"
+      readInCourse: "Read in the course",
+      microphone: "Use microphone",
+      stop: "Stop",
+      listening: "Listening with speech recognition. Review the words before sending.",
+      stopped: "Listening stopped.",
+      recording: "Recording a voice note for a tutor. It will not be sent to the assistant.",
+      recordedReady: "Voice note ready. It will only be sent to a tutor.",
+      speechAdded: "Speech added to your question. Review it before sending.",
+      voiceUnavailable: "Speech recognition failed and voice recording is unavailable.",
+      readBack: "Read it back",
+      listen: "Listen",
+      noAmharicVoice: "No Amharic voice on this phone",
+      escalationNote: "Optional note",
+      consent: "Share this conversation with a tutor",
+      sendEscalation: "Send to a person",
+      voiceNote: "Voice note for tutor",
+      escalationSent: "Your request was sent to a tutor.",
+      escalationFailed: "Your request could not be sent. Check your connection and try again."
     }
   };
 
@@ -41,7 +58,24 @@
       you: "እርስዎ",
       assistant: "ረዳት",
       notFound: "ይህንን በትምህርቱ ውስጥ ማግኘት አልቻልኩም",
-      readInCourse: "በትምህርቱ ውስጥ ያንብቡ"
+      readInCourse: "በትምህርቱ ውስጥ ያንብቡ",
+      microphone: "ማይክሮፎን ተጠቀም",
+      stop: "አቁም",
+      listening: "በድምፅ ማወቂያ እያዳመጥኩ ነው። ከመላክዎ በፊት ቃላቱን ይመልከቱ።",
+      stopped: "ማዳመጥ ቆሟል።",
+      recording: "ለአስተማሪ የድምፅ መልዕክት እየቀዳሁ ነው። ወደ ረዳቱ አይላክም።",
+      recordedReady: "የድምፅ መልዕክቱ ዝግጁ ነው። ለአስተማሪ ብቻ ይላካል።",
+      speechAdded: "የተነገረው ወደ ጥያቄዎ ተጨምሯል። ከመላክዎ በፊት ይመልከቱ።",
+      voiceUnavailable: "የድምፅ ማወቂያና ቀረጻ በዚህ ስልክ ላይ አይገኙም።",
+      readBack: "መልሰህ አንብብ",
+      listen: "አዳምጥ",
+      noAmharicVoice: "በዚህ ስልክ ላይ የአማርኛ ድምፅ የለም",
+      escalationNote: "አማራጭ ማስታወሻ",
+      consent: "ይህን ውይይት ለአስተማሪ ያጋሩ",
+      sendEscalation: "ለሰው ላክ",
+      voiceNote: "ለአስተማሪ የድምፅ መልዕክት",
+      escalationSent: "ጥያቄዎ ለአስተማሪ ተልኳል።",
+      escalationFailed: "ጥያቄዎ ሊላክ አልቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።"
     }
   };
 
@@ -87,6 +121,12 @@
       this._messages = [];
       this._sections = [];
       this._searchModule = null;
+      this._recognition = null;
+      this._voiceMode = "";
+      this._voiceBlob = null;
+      this._voiceObjectUrl = "";
+      this._ignoreRecognitionEnd = false;
+      this._voiceGeneration = 0;
     }
 
     connectedCallback() {
@@ -168,6 +208,16 @@
           .debug-score { font-size: 0.8em; color: #64748b; margin-top: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
           .person-action { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 14px; background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); border-radius: 4px; font-weight: 600; cursor: pointer; }
           .person-action:focus-visible { outline: 3px solid #1a1a1a; outline-offset: 2px; }
+          .voice-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+          .listen-button { display: block; margin-top: 8px; }
+          .voice-status { min-height: 1.5em; margin: 0; }
+          .voice-status:empty { display: none; }
+          .voice-note audio { display: block; width: 100%; margin-block: 8px; }
+          .escalation { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #94a3b8; padding-top: 12px; }
+          .escalation[hidden], [hidden] { display: none !important; }
+          .consent { display: flex; align-items: flex-start; gap: 8px; }
+          .consent input { width: 20px; height: 20px; flex: none; margin: 2px 0 0; }
+          .voice-button[aria-pressed="true"] { background: #7f1d1d; color: #fff; border-color: #7f1d1d; }
           form, .field { display: flex; flex-direction: column; gap: 8px; }
           textarea { width: 100%; min-height: 4.5rem; max-height: 35vh; resize: vertical; padding: 8px 12px; border: 2px solid var(--assistant-foreground, #1a1a1a); border-radius: 4px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); }
           textarea::placeholder { color: #595959; opacity: 1; }
@@ -199,7 +249,21 @@
               <div class="field"><label id="question-label" for="question"></label>
                 <textarea id="question" name="question" dir="auto" autocomplete="off" aria-required="true"></textarea>
                 <p id="question-error" class="error" role="alert" dir="auto"></p></div>
+              <div class="voice-controls">
+                <button type="button" class="secondary voice-button" id="microphone" aria-pressed="false"></button>
+                <button type="button" class="secondary" id="stop-voice" hidden></button>
+                <button type="button" class="secondary" id="read-back" hidden></button>
+              </div>
+              <p id="voice-status" class="voice-status" role="status" aria-live="polite" aria-atomic="true"></p>
+              <div class="voice-note" id="voice-note" hidden><strong id="voice-note-label"></strong><audio id="voice-player" controls></audio></div>
               <button type="submit" id="send"></button>
+            </form>
+            <form id="escalation" class="escalation" novalidate hidden>
+              <label for="escalation-note" id="escalation-note-label"></label>
+              <textarea id="escalation-note" name="note" rows="2" dir="auto"></textarea>
+              <label class="consent" for="consent"><input id="consent" type="checkbox"><span id="consent-label"></span></label>
+              <p id="escalation-status" class="error" role="status" aria-live="polite"></p>
+              <button type="submit" id="send-escalation"></button>
             </form>
           </div>
         </section>`;
@@ -219,7 +283,10 @@
         label: $("question-label"),
         input: $("question"),
         error: $("question-error"),
-        send: $("send")
+        send: $("send"), microphone: $("microphone"), stopVoice: $("stop-voice"), readBack: $("read-back"),
+        voiceStatus: $("voice-status"), voiceNote: $("voice-note"), voiceNoteLabel: $("voice-note-label"), voicePlayer: $("voice-player"),
+        escalation: $("escalation"), escalationNoteLabel: $("escalation-note-label"), escalationNote: $("escalation-note"),
+        consent: $("consent"), consentLabel: $("consent-label"), escalationStatus: $("escalation-status"), sendEscalation: $("send-escalation")
       };
       this._applyTheme();
       this._renderMessages();
@@ -249,7 +316,11 @@
       });
       e.english.addEventListener("click", () => this.setAttribute("lang", "en"));
       e.amharic.addEventListener("click", () => this.setAttribute("lang", "am"));
-      e.person.addEventListener("click", () => this._emit("person", {}));
+      e.person.addEventListener("click", () => this._openEscalation());
+      e.microphone.addEventListener("click", () => this._startVoiceInput());
+      e.stopVoice.addEventListener("click", () => this._stopVoice());
+      e.readBack.addEventListener("click", () => this._speakText(e.input.value, this._pack.lang, null, e.voiceStatus));
+      e.escalation.addEventListener("submit", (event) => this._submitEscalation(event));
       this.addEventListener("keydown", (event) => {
         if (event.key === "Escape" && !e.panel.hidden) {
           event.preventDefault();
@@ -306,6 +377,19 @@
       content.textContent = message.text;
       div.appendChild(content);
 
+      if (isAssistant) {
+        const listen = document.createElement("button");
+        listen.type = "button";
+        listen.className = "secondary listen-button";
+        listen.textContent = this._pack?.strings.listen || (lang === "am" ? am.strings.listen : en.strings.listen);
+        const listenStatus = document.createElement("p");
+        listenStatus.className = "voice-status";
+        listenStatus.setAttribute("role", "status");
+        listenStatus.setAttribute("aria-live", "polite");
+        listen.addEventListener("click", () => this._speakText(content.textContent, lang, message.sectionId, listenStatus));
+        div.append(listen, listenStatus);
+      }
+
       if (isAssistant && message.linkUrl && message.linkTitle) {
         const link = document.createElement("a");
         link.className = "course-link";
@@ -342,6 +426,7 @@
           lang: message.lang || this._pack?.lang || "en",
           linkUrl: message.linkUrl,
           linkTitle: message.linkTitle,
+          sectionId: message.sectionId,
           score: message.score,
           showPerson: message.showPerson
         });
@@ -382,6 +467,15 @@
       write(e.greeting, "greeting");
       write(e.label, "questionLabel");
       write(e.send, "ask");
+      write(e.microphone, "microphone");
+      e.microphone.setAttribute("aria-label", s.microphone);
+      e.microphone.lang = pack.lang;
+      write(e.stopVoice, "stop");
+      write(e.readBack, "readBack");
+      write(e.voiceNoteLabel, "voiceNote");
+      write(e.escalationNoteLabel, "escalationNote");
+      write(e.consentLabel, "consent");
+      write(e.sendEscalation, "sendEscalation");
       e.input.lang = pack.lang;
       e.input.placeholder = s.questionPlaceholder || "";
       e.panel.lang = pack.lang;
@@ -473,6 +567,7 @@
           lang: currentLang,
           linkUrl: bestSection.url,
           linkTitle,
+          sectionId: bestSection.id,
           score,
           showPerson: false
         });
@@ -492,6 +587,221 @@
           score: topScore,
           showPerson: true
         });
+      }
+    }
+
+    _setVoiceState(active, mode = "") {
+      this._voiceMode = mode;
+      this._els.microphone.setAttribute("aria-pressed", active ? "true" : "false");
+      this._els.stopVoice.hidden = !active;
+    }
+
+    _startVoiceInput() {
+      if (this._voiceMode) {
+        this._stopVoice();
+        return;
+      }
+      const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!Recognition) {
+        this._startVoiceRecorder();
+        return;
+      }
+      const recognition = new Recognition();
+      recognition.lang = this._pack?.lang === "am" ? "am-ET" : "en-US";
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      this._recognition = recognition;
+      this._recognitionGotResult = false;
+      this._ignoreRecognitionEnd = false;
+      this._setVoiceState(true, "recognition");
+      this._els.voiceStatus.textContent = this._pack.strings.listening;
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results || []).map((result) => result[0]?.transcript || "").join(" ").trim();
+        if (transcript) {
+          this._recognitionGotResult = true;
+          this._els.input.value = transcript;
+          this._els.input.dispatchEvent(new Event("input", { bubbles: true }));
+          this._els.readBack.hidden = false;
+          this._els.voiceStatus.textContent = this._pack.strings.speechAdded;
+        }
+        this._finishRecognition();
+      };
+      recognition.onerror = () => {
+        if (this._recognition !== recognition) return;
+        this._recognition = null;
+        this._setVoiceState(false);
+        if (!this._recognitionGotResult) this._startVoiceRecorder();
+      };
+      recognition.onend = () => {
+        if (this._recognition !== recognition) return;
+        this._recognition = null;
+        const shouldFallback = !this._recognitionGotResult && !this._ignoreRecognitionEnd;
+        if (shouldFallback) this._startVoiceRecorder();
+        else if (!this._recognitionGotResult) this._setVoiceState(false);
+      };
+      try {
+        recognition.start();
+      } catch {
+        this._recognition = null;
+        this._startVoiceRecorder();
+      }
+    }
+
+    _finishRecognition() {
+      const recognition = this._recognition;
+      this._recognition = null;
+      this._setVoiceState(false);
+      try { recognition?.stop(); } catch { /* Recognition may already have stopped. */ }
+    }
+
+    async _startVoiceRecorder() {
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !window.isSecureContext) {
+        this._setVoiceState(false);
+        this._els.voiceStatus.textContent = this._pack.strings.voiceUnavailable;
+        return;
+      }
+      this._setVoiceState(true, "recording-pending");
+      const generation = ++this._voiceGeneration;
+      this._els.voiceStatus.textContent = this._pack.strings.recording;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (generation !== this._voiceGeneration) {
+          for (const track of stream.getTracks()) track.stop();
+          return;
+        }
+        this._mediaStream = stream;
+        this._voiceChunks = [];
+        const recorder = new MediaRecorder(stream);
+        this._mediaRecorder = recorder;
+        recorder.addEventListener("dataavailable", (event) => {
+          if (event.data?.size) this._voiceChunks.push(event.data);
+        });
+        recorder.addEventListener("stop", () => {
+          const blob = new Blob(this._voiceChunks, { type: recorder.mimeType || "audio/webm" });
+          this._voiceBlob = blob.size ? blob : null;
+          for (const track of stream.getTracks()) track.stop();
+          this._mediaStream = null;
+          this._mediaRecorder = null;
+          this._setVoiceState(false);
+          if (this._voiceBlob) {
+            if (this._voiceObjectUrl) URL.revokeObjectURL(this._voiceObjectUrl);
+            this._voiceObjectUrl = URL.createObjectURL(this._voiceBlob);
+            this._els.voicePlayer.src = this._voiceObjectUrl;
+            this._els.voiceNote.hidden = false;
+            this._els.voiceStatus.textContent = this._pack.strings.recordedReady;
+          }
+        }, { once: true });
+        recorder.start();
+        this._voiceMode = "recording";
+      } catch {
+        for (const track of this._mediaStream?.getTracks?.() || []) track.stop();
+        this._mediaStream = null;
+        this._mediaRecorder = null;
+        this._setVoiceState(false);
+        this._els.voiceStatus.textContent = this._pack.strings.voiceUnavailable;
+      }
+    }
+
+    _stopVoice() {
+      if (this._voiceMode === "recognition" && this._recognition) {
+        this._ignoreRecognitionEnd = true;
+        const recognition = this._recognition;
+        this._recognition = null;
+        this._setVoiceState(false);
+        try { recognition.stop(); } catch { /* Already stopped. */ }
+        this._els.voiceStatus.textContent = this._pack.strings.stopped;
+        return;
+      }
+      if ((this._voiceMode === "recording" || this._voiceMode === "recording-pending") && this._mediaRecorder?.state === "recording") {
+        this._mediaRecorder.stop();
+      } else if (this._voiceMode === "recording-pending") {
+        this._voiceGeneration++;
+        for (const track of this._mediaStream?.getTracks?.() || []) track.stop();
+        this._mediaStream = null;
+        this._setVoiceState(false);
+        this._els.voiceStatus.textContent = this._pack.strings.stopped;
+      }
+    }
+
+    _speakText(text, language, sectionId, statusNode) {
+      const lang = language === "am" ? "am-ET" : "en-US";
+      if (language === "am") {
+        const voices = window.speechSynthesis?.getVoices?.() || [];
+        const voice = voices.find((item) => (item.lang || "").toLowerCase().startsWith("am"));
+        if (!voice) {
+          const message = this._pack?.strings.noAmharicVoice || am.strings.noAmharicVoice;
+          statusNode.textContent = message;
+          if (sectionId) this._playAmharicAudio(sectionId, statusNode);
+          return;
+        }
+      }
+      if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+        statusNode.textContent = language === "am" ? (this._pack?.strings.noAmharicVoice || am.strings.noAmharicVoice) : this._pack.strings.voiceUnavailable;
+        return;
+      }
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang;
+      if (language === "am") utterance.voice = window.speechSynthesis.getVoices().find((item) => (item.lang || "").toLowerCase().startsWith("am")) || null;
+      utterance.onerror = () => { statusNode.textContent = this._pack.strings.voiceUnavailable; };
+      statusNode.textContent = "";
+      window.speechSynthesis.speak(utterance);
+    }
+
+    async _playAmharicAudio(sectionId, statusNode) {
+      const url = new URL(`./audio/${encodeURIComponent(sectionId)}.am.mp3`, scriptUrl);
+      try {
+        const response = await fetch(url, { method: "HEAD" });
+        if (!response.ok) return;
+        const audio = new Audio(url.href);
+        await audio.play();
+      } catch { /* Keep the explicit no-voice message visible. */ }
+    }
+
+    _openEscalation() {
+      this._els.escalation.hidden = false;
+      this._els.escalationNote.focus();
+      this._emit("person", {});
+    }
+
+    _blobAsDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error || new Error("Could not read the voice note."));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async _submitEscalation(event) {
+      event.preventDefault();
+      const e = this._els;
+      const conversation = e.consent.checked ? this._messages : [];
+      const payload = {
+        conversation,
+        language: this._pack.lang,
+        page: location.href,
+        note: e.escalationNote.value.trim()
+      };
+      if (this._voiceBlob) {
+        payload.audio = { mimeType: this._voiceBlob.type || "audio/webm", dataUrl: await this._blobAsDataUrl(this._voiceBlob) };
+      }
+      try {
+        const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+        const response = await fetch(`${base}/api/v1/escalations`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error("Escalation send failed");
+        const result = await response.json();
+        e.escalationStatus.textContent = this._pack.strings.escalationSent;
+        this._emit("escalated", { ticketId: result.ticketId });
+        e.escalationNote.value = "";
+        e.consent.checked = false;
+        this._voiceBlob = null;
+        e.voiceNote.hidden = true;
+        e.voicePlayer.removeAttribute("src");
+      } catch {
+        e.escalationStatus.textContent = this._pack.strings.escalationFailed;
       }
     }
 

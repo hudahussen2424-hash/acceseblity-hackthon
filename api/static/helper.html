@@ -64,6 +64,11 @@
       }
       if (!ticket.conversation.length) { const empty = document.createElement("li"); empty.textContent = "The learner did not share the conversation."; conversation.append(empty); }
       item.append(conversation);
+      if (ticket.audio && ticket.audio.dataUrl) {
+        const audioLabel = document.createElement("p"); audioLabel.textContent = "Learner voice note";
+        const audio = document.createElement("audio"); audio.controls = true; audio.preload = "none"; audio.src = ticket.audio.dataUrl;
+        item.append(audioLabel, audio);
+      }
       const label = document.createElement("label"); label.htmlFor = `reply-${ticket.ticketId}`; label.textContent = "Reply to learner";
       const box = document.createElement("textarea"); box.id = `reply-${ticket.ticketId}`; box.rows = 4; box.required = true; box.dir = "auto";
       const actions = document.createElement("div"); actions.className = "actions";
