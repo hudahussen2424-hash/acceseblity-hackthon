@@ -1,14 +1,45 @@
 services:
-  telegram-bot:
-    build:
-      context: .
-      dockerfile: api/Dockerfile
-    environment:
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env}
-      ESCALATIONS_DB: /data/escalations.sqlite3
-    restart: unless-stopped
+  web:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
     volumes:
-      - telegram-data:/data
+      - ./savanna:/usr/share/nginx/html/savanna:ro
+      - ./module:/usr/share/nginx/html/module:ro
+      - ./demo:/usr/share/nginx/html/demo:ro
+      - ./savanna/pages/concept-with-navigation.html:/usr/share/nginx/html/index.html:ro
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    ports:
+      - "8081:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./demo:/app/demo:ro
+      - ./module:/app/module:ro
+      - ./savanna:/app/savanna:ro
+    restart: unless-stopped
+
+  telegram:
+    build: ./api
+    command: ["python", "-m", "api.telegram_bot"]
+    env_file:
+      - .env
+    restart: unless-stopped
+    profiles:
+      - telegram
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    profiles:
+      - ollama
 
 volumes:
-  telegram-data:
+  ollama-data:

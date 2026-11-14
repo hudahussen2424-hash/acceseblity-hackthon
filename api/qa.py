@@ -15,7 +15,7 @@ async def answer_question(question: str, language: str, sections: list[dict], pr
     ranked = retrieve(question, sections, language)
     best_score, best = ranked[0] if ranked else (0.0, None)
     sources = [
-        {"title": section["title"], "url": section["url"], "type": section.get("type", "lesson")}
+        {"title": section["title"], "url": section["url"], **({"type": section["type"]} if "type" in section else {})}
         for _, section in ranked[:2]
     ]
     if sensitive_topic(question):

@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/search.test.js"
+    "test": "node --test tests/search.test.js",
+    "build:module": "node scripts/build-module.mjs",
+    "check:module-size": "node scripts/check-module-size.mjs"
+  },
+  "devDependencies": {
+    "terser": "^5.31.0"
   }
 }

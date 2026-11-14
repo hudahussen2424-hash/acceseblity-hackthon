@@ -20,6 +20,10 @@
     .ticket { padding: 1rem; border: 1px solid #8995a3; border-radius: .5rem; background: white; overflow-wrap: anywhere; }
     .conversation { padding-inline-start: 1.25rem; }
     .conversation li { margin-block: .5rem; white-space: pre-wrap; }
+    .screen-context, .screen-demo { margin-block: 1rem; padding: 1rem; border: 1px solid #8995a3; border-radius: .5rem; }
+    .screen-context pre { max-height: 16rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .screen-context img, .screen-demo video { display: block; max-width: 100%; margin-block: .5rem; }
+    .screen-demo video { width: 100%; max-height: 60vh; background: #111; }
   </style>
 </head>
 <body>
@@ -38,8 +42,97 @@
     const status = document.getElementById("status");
     const list = document.getElementById("tickets");
     const authHeaders = () => ({ "X-Helper-Token": tokenField.value });
+    const screenPeers = new Map();
+
+    function closeScreenPeer(ticketId) {
+      screenPeers.get(ticketId)?.close();
+      screenPeers.delete(ticketId);
+    }
+
+    function waitForIceGathering(peer) {
+      if (peer.iceGatheringState === "complete") return Promise.resolve();
+      return new Promise((resolve) => {
+        const finish = () => {
+          clearTimeout(timeout);
+          peer.removeEventListener("icegatheringstatechange", checkState);
+          resolve();
+        };
+        const checkState = () => {
+          if (peer.iceGatheringState === "complete") finish();
+        };
+        const timeout = setTimeout(finish, 10000);
+        peer.addEventListener("icegatheringstatechange", checkState);
+      });
+    }
+
+    async function connectScreenShare(ticket, video, feedback, button) {
+      button.disabled = true;
+      try {
+        if (!window.RTCPeerConnection) throw new Error("WebRTC is not available in this browser.");
+        const url = `/api/v1/escalations/${encodeURIComponent(ticket.ticketId)}/signal`;
+        const offerResponse = await fetch(`${url}?type=offer`, { headers: authHeaders() });
+        if (!offerResponse.ok) throw new Error("The learner's offer could not be loaded.");
+        const offer = await offerResponse.json();
+        if (!offer.sdp) throw new Error("The learner has not started sharing yet.");
+
+        const peer = new RTCPeerConnection();
+        screenPeers.set(ticket.ticketId, peer);
+        peer.ontrack = (event) => {
+          video.srcObject = event.streams[0];
+          video.hidden = false;
+        };
+        peer.onconnectionstatechange = () => {
+          if (peer.connectionState === "connected") feedback.textContent = "Connected. Demo transport; no recording.";
+          if (peer.connectionState === "failed") feedback.textContent = "Connection failed. This network may block direct WebRTC.";
+        };
+        await peer.setRemoteDescription({ type: "offer", sdp: offer.sdp });
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        await waitForIceGathering(peer);
+        const answerResponse = await fetch(url, {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "answer", sdp: peer.localDescription.sdp })
+        });
+        if (!answerResponse.ok) throw new Error("The WebRTC answer could not be sent.");
+        feedback.textContent = "Answer sent. Waiting for the learner's connection (demo transport).";
+      } catch (error) {
+        closeScreenPeer(ticket.ticketId);
+        feedback.textContent = error.message;
+        button.disabled = false;
+      }
+    }
+
+    function makeScreenContext(context) {
+      const section = document.createElement("section"); section.className = "screen-context";
+      const title = document.createElement("h3"); title.textContent = "Shared page context"; section.append(title);
+      const addText = (label, value, tag = "p") => {
+        if (!value) return;
+        const node = document.createElement(tag); node.textContent = `${label}: ${value}`; section.append(node);
+      };
+      addText("Page URL", context.pageUrl);
+      addText("Focused element accessible name", context.focusedAccessibleName);
+      addText("Focused element HTML (text only)", context.focusedOuterHTML, "pre");
+      if (Array.isArray(context.headings) && context.headings.length) {
+        const heading = document.createElement("h4"); heading.textContent = "Page headings"; section.append(heading);
+        const headings = document.createElement("ul");
+        for (const text of context.headings) {
+          if (typeof text !== "string") continue;
+          const item = document.createElement("li"); item.textContent = text; headings.append(item);
+        }
+        section.append(headings);
+      }
+      if (context.screenshot?.dataUrl) {
+        const image = document.createElement("img");
+        image.src = context.screenshot.dataUrl;
+        image.alt = "Learner-uploaded screenshot";
+        section.append(image);
+      }
+      return section;
+    }
 
     async function loadTickets() {
+      for (const ticketId of screenPeers.keys()) closeScreenPeer(ticketId);
       list.replaceChildren();
       status.textContent = "Loading waiting requests…";
       try {
@@ -55,12 +148,24 @@
       const item = document.createElement("li"); item.className = "ticket";
       const title = document.createElement("h2"); title.textContent = `${ticket.type === "accommodation" ? "Accommodation request" : "Request"} ${ticket.ticketId}`; item.append(title);
       const meta = document.createElement("p"); meta.textContent = `Language: ${ticket.language} · Page: ${ticket.page}`; item.append(meta);
+      if (ticket.phone) { const phone = document.createElement("p"); phone.textContent = `Learner phone: ${ticket.phone}`; item.append(phone); }
       if (ticket.type === "accommodation") {
         const privateDetails = document.createElement("p");
         privateDetails.textContent = `Private to tutor · Job: ${ticket.jobId || "Not specified"} · Accommodation: ${ticket.accommodation || "Not specified"}`;
         item.append(privateDetails);
       }
       if (ticket.note) { const note = document.createElement("p"); note.textContent = `Learner note: ${ticket.note}`; item.append(note); }
+      if (ticket.screenContext) item.append(makeScreenContext(ticket.screenContext));
+      if (ticket.type === "screen-share") {
+        const screenDemo = document.createElement("section"); screenDemo.className = "screen-demo";
+        const screenTitle = document.createElement("h3"); screenTitle.textContent = "Live screen (demo transport)"; screenDemo.append(screenTitle);
+        const screenNote = document.createElement("p"); screenNote.textContent = "The live stream is not recorded. Direct WebRTC may not connect on some networks."; screenDemo.append(screenNote);
+        const video = document.createElement("video"); video.autoplay = true; video.muted = true; video.playsInline = true; video.hidden = true;
+        const connect = document.createElement("button"); connect.type = "button"; connect.textContent = "Connect to learner screen";
+        const screenStatus = document.createElement("p"); screenStatus.setAttribute("role", "status"); screenStatus.setAttribute("aria-live", "polite");
+        connect.addEventListener("click", () => connectScreenShare(ticket, video, screenStatus, connect));
+        screenDemo.append(video, connect, screenStatus); item.append(screenDemo);
+      }
       const conversationTitle = document.createElement("h3"); conversationTitle.textContent = "Shared conversation"; item.append(conversationTitle);
       const conversation = document.createElement("ul"); conversation.className = "conversation";
       for (const message of ticket.conversation) {
@@ -89,7 +194,7 @@
           });
           if (!response.ok) throw new Error((await response.json()).detail || "Reply could not be saved.");
           feedback.textContent = "Reply sent. The learner can see it the next time they open chat.";
-          item.remove(); status.textContent = "Reply saved. Refresh to load the remaining requests.";
+          closeScreenPeer(ticket.ticketId); item.remove(); status.textContent = "Reply saved. Refresh to load the remaining requests.";
         } catch (error) { feedback.textContent = error.message; send.disabled = false; }
       });
       remove.addEventListener("click", async () => {
@@ -97,7 +202,7 @@
         try {
           const response = await fetch(`/api/v1/escalations/${encodeURIComponent(ticket.ticketId)}`, { method: "DELETE", headers: authHeaders() });
           if (!response.ok) throw new Error("Request could not be deleted.");
-          item.remove(); status.textContent = "Request deleted.";
+          closeScreenPeer(ticket.ticketId); item.remove(); status.textContent = "Request deleted.";
         } catch (error) { feedback.textContent = error.message; }
       });
       actions.append(send, remove); item.append(label, box, actions, feedback); return item;

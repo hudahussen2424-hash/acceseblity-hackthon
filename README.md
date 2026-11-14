@@ -6,6 +6,26 @@ Create a bot by opening [@BotFather](https://t.me/BotFather) in Telegram, sendin
 
 ---
 
+## Screen sharing demo
+
+Screen sharing is off until the learner checks the consent box and presses a sharing button. On desktop browsers that support `getDisplayMedia()`, the learner chooses what to share; a persistent status bar includes a Stop button. The live stream is sent directly to the tutor through a minimal WebRTC offer/answer demo and is not recorded or stored by the app. Signaling descriptions are temporarily stored until the connection is established or sharing is stopped. This demo has no STUN/TURN service, so direct WebRTC may fail on some networks.
+
+**Android Chrome limitation:** Android Chrome does not support `getDisplayMedia()` in this flow, so it cannot share a live screen. It offers “Show my tutor where I am” instead, which sends the current page URL, focused element accessible name, up to 500 characters of that element's outerHTML, page headings, and only a screenshot the learner explicitly chooses to upload. Say this plainly in product/help copy: **“On Android Chrome, live screen sharing is unavailable; you can share page details and optionally upload a screenshot instead.”**
+
+### Manual test checklist
+
+- [ ] Before consent and a learner click, neither capture route starts and no page details are sent.
+- [ ] On desktop, consent followed by “Share my screen” opens the browser's native picker; canceling it leaves sharing off.
+- [ ] While desktop capture is active, the persistent “You are sharing your screen” status and real Stop button are visible and announced; Stop ends every media track.
+- [ ] With the helper inbox open, connect to the learner's screen; verify the video arrives, then stop sharing and confirm it ends. Try a network that blocks direct WebRTC and verify the failure is clear.
+- [ ] In Android Chrome, verify the page-context button is shown instead of live capture. Submit without a screenshot and verify URL, focused element details, and headings appear in the helper inbox.
+- [ ] Upload a supported image and verify it appears in the helper inbox; try an oversized or unsupported image and verify it is rejected.
+- [ ] Verify consent copy is localized in English and Amharic, and no screen/page context is shared unless the learner explicitly starts that route.
+
+Run the API coverage with `pytest tests/test_screen_sharing.py`.
+
+---
+
 ## SMS Inbound Endpoint (`POST /sms/inbound`)
 
 The learning assistant supports inbound SMS messaging for low-bandwidth learners via `POST /sms/inbound`.

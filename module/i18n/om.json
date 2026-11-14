@@ -1,0 +1,14 @@
+{
+  "lang": "om",
+  "dir": "ltr",
+  "strings": {
+    "launcher": "Gargaaraa barnootaa bani",
+    "dialogTitle": "Gargaaraa barnootaa",
+    "language": "Afaan",
+    "questionLabel": "Gaaffii kee",
+    "ask": "Ergi",
+    "offlineSaved": "Bilbila kana irratti olkaa'ame. Yeroo interneetiin jiraatu ni ergama.",
+    "phoneLabel": "Lakkoofsa bilbilaa (filannoo)",
+    "phoneInvalid": "Lakkoofsa bilbilaa Itoophiyaa sirrii galchi."
+  }
+}

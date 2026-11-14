@@ -3,6 +3,14 @@
   const scriptUrl = document.currentScript?.src || new URL("./db-assistant.js", document.baseURI).href;
   const i18nBase = new URL("./i18n/", scriptUrl);
 
+  function normalizeEthiopianPhone(value) {
+    const compact = String(value || "").replace(/[\s()-]/g, "");
+    const national = compact.replace(/^\+251/, "0");
+    if (/^09\d{8}$/.test(national)) return `+251${national.slice(1)}`;
+    if (/^07\d{8}$/.test(national)) return `+251${national.slice(1)}`;
+    return "";
+  }
+
   const en = {
     lang: "en",
     dir: "ltr",
@@ -38,6 +46,9 @@
       voiceNote: "Voice note for tutor",
       escalationSent: "Your request was sent to a tutor.",
       escalationFailed: "Your request could not be sent. Check your connection and try again.",
+      offlineSaved: "Saved on this phone. It will send when you are online.",
+      phoneLabel: "Phone number (optional)",
+      phoneInvalid: "Enter an Ethiopian number starting with 09, 07, +2519, or +2517.",
       accommodationButton: "I need an accommodation for my interview",
       accommodationPrivacy: "Your accommodation choices and note go only to a tutor. They are never shared with an employer.",
       whichJob: "Which test job is your interview for?",
@@ -48,6 +59,7 @@
       accommodationSent: "Your request was sent privately to a tutor.",
       accommodationFailed: "Your request could not be sent. Please try again.",
       screenShareConsent: "I consent to sharing my screen or page details with a tutor. Sharing starts only after I press a button. Live video is not recorded or stored; page details and any selected screenshot are attached to a tutor request.",
+      screenShareTitle: "Share with a tutor",
       screenShareNote: "Desktop uses a direct demo WebRTC connection; some networks may block it. Android Chrome sends page details and an optional image only, not live video.",
       screenShareStart: "Share my screen",
       screenContextStart: "Show my tutor where I am",
@@ -62,6 +74,8 @@
       screenShareCancelled: "Screen sharing was cancelled.",
       screenShareError: "Screen sharing could not start. Please try again.",
       screenContextSent: "Page details were sent to the tutor. This did not share your live screen.",
+      screenContextFailed: "Page details could not be sent. Please try again.",
+      screenShareCleanupFailed: "Screen sharing stopped, but demo signaling could not be cleared.",
       screenScreenshotTooLarge: "Choose an image smaller than 3 MB.",
       describeOther: "Describe the accommodation you need in the note."
     }
@@ -102,6 +116,9 @@
       voiceNote: "ለአስተማሪ የድምፅ መልዕክት",
       escalationSent: "ጥያቄዎ ለአስተማሪ ተልኳል።",
       escalationFailed: "ጥያቄዎ ሊላክ አልቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
+      offlineSaved: "በዚህ ስልክ ተቀምጧል። ኢንተርኔት ሲኖር ይላካል።",
+      phoneLabel: "የስልክ ቁጥር (አማራጭ)",
+      phoneInvalid: "ትክክለኛ የኢትዮጵያ ስልክ ቁጥር ያስገቡ።",
       accommodationButton: "ለቃለ መጠይቄ ማስተካከያ እፈልጋለሁ",
       accommodationPrivacy: "የመረጡት ማስተካከያና ማስታወሻ ለአስተማሪ ብቻ ይሄዳሉ። ለቀጣሪ አይጋሩም።",
       whichJob: "ቃለ መጠይቅዎ ለየትኛው የሙከራ ሥራ ነው?",
@@ -112,6 +129,7 @@
       accommodationSent: "ጥያቄዎ በግል ለአስተማሪ ተልኳል።",
       accommodationFailed: "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።",
       screenShareConsent: "ማያዬን ወይም የገጹን መረጃ ለአስተማሪ ለማጋራት እስማማለሁ። ማጋራት የሚጀምረው አዝራሩን ከጫንኩ ብቻ ነው። ቀጥታ ቪዲዮ አይቀዳም ወይም አይቀመጥም፤ የገጽ መረጃና የመረጡት ምስል ከአስተማሪ ጥያቄ ጋር ይቀመጣሉ።",
+      screenShareTitle: "ከአስተማሪ ጋር አጋራ",
       screenShareNote: "ዴስክቶፕ ቀጥታ የሙከራ WebRTC ግንኙነት ይጠቀማል፤ አንዳንድ ኔትወርኮች ሊከለክሉት ይችላሉ። Android Chrome የገጽ መረጃና አማራጭ ምስል ብቻ ይልካል፤ ቀጥታ ቪዲዮ አይደለም።",
       screenShareStart: "ማያዬን አጋራ",
       screenContextStart: "ያለሁበትን ለአስተማሪ አሳይ",
@@ -126,6 +144,8 @@
       screenShareCancelled: "የማያ ማጋራት ተሰርዟል።",
       screenShareError: "የማያ ማጋራት መጀመር አልቻለም። እንደገና ይሞክሩ።",
       screenContextSent: "የገጹ መረጃ ለአስተማሪ ተልኳል። ቀጥታ ማያዎን አላጋራም።",
+      screenContextFailed: "የገጹን መረጃ መላክ አልተቻለም። እንደገና ይሞክሩ።",
+      screenShareCleanupFailed: "የማያ ማጋራት ቆሟል፣ ግን የሙከራ ምልክቶቹን ማጽዳት አልተቻለም።",
       screenScreenshotTooLarge: "ከ3 ሜባ ያነሰ ምስል ይምረጡ።",
       describeOther: "በማስታወሻው የሚፈልጉትን ማስተካከያ ይግለጹ።"
     }
@@ -185,26 +205,37 @@
       this._screenTicketId = "";
       this._screenShareGeneration = 0;
       this._screenShareStarting = false;
+      this._lastPageFocusedElement = null;
+      this._rememberPageFocus = (event) => {
+        const target = event.composedPath?.()[0] || event.target;
+        if (!this.shadowRoot?.contains(target)) this._lastPageFocusedElement = target;
+      };
     }
 
     connectedCallback() {
+      document.addEventListener("focusin", this._rememberPageFocus, true);
       if (this._built) return;
       this._built = true;
       this._storageKey = `db-assistant:${location.pathname}:${this.id || "default"}`;
+      this._queueKey = `${this._storageKey}:offline-questions`;
       this._restore();
       this._render();
       this._bind();
+      this._registerServiceWorker();
       this._loadI18n();
       this._initSearchAndContent();
+      if (navigator.onLine) this._flushQuestionQueue();
     }
 
     disconnectedCallback() {
+      document.removeEventListener("focusin", this._rememberPageFocus, true);
       this._stopScreenShare(false);
       try { this._recognition?.stop(); } catch { /* Recognition may already be closed. */ }
       try { if (this._mediaRecorder?.state === "recording") this._mediaRecorder.stop(); } catch { /* Recorder may already be closed. */ }
       for (const track of this._mediaStream?.getTracks?.() || []) track.stop();
       this._mediaStream = null;
       window.speechSynthesis?.cancel?.();
+      window.removeEventListener("online", this._onlineHandler);
       if (this._voiceObjectUrl) URL.revokeObjectURL(this._voiceObjectUrl);
     }
 
@@ -229,6 +260,14 @@
       await this._loadContent();
     }
 
+    _registerServiceWorker() {
+      if (!window.isSecureContext || !navigator.serviceWorker) return;
+      const appRoot = new URL("../", scriptUrl);
+      const workerUrl = new URL("sw.js", appRoot);
+      const safeScope = appRoot.pathname;
+      navigator.serviceWorker.register(workerUrl.href, { scope: safeScope }).catch(() => {});
+    }
+
     async _loadContent() {
       const attr = this.getAttribute("content");
       const url = attr
@@ -239,14 +278,20 @@
         if (resp.ok) {
           const sections = await resp.json();
           this._sections = Array.isArray(sections) ? sections.map((section) => ({ ...section, type: section.type || "lesson" })) : [];
+          try { localStorage.setItem(`${this._storageKey}:content`, JSON.stringify(this._sections)); } catch { /* Storage may be disabled or full. */ }
         }
       } catch (err) {
         console.warn("Could not load content sections from", url, err);
+        try {
+          const cached = JSON.parse(localStorage.getItem(`${this._storageKey}:content`) || "[]");
+          if (Array.isArray(cached)) this._sections = cached;
+        } catch { /* Keep an empty source when local storage is unavailable. */ }
       }
       try {
         const response = await fetch(new URL("../demo/data/jobs.json", scriptUrl));
         if (!response.ok) throw new Error("Jobs source unavailable");
         this._jobs = await response.json();
+        try { localStorage.setItem(`${this._storageKey}:jobs`, JSON.stringify(this._jobs)); } catch { /* Storage may be disabled or full. */ }
         const jobSections = this._jobs.map((job) => ({
           ...job,
           type: "job",
@@ -260,6 +305,16 @@
         this._populateAccommodationChoices();
       } catch (err) {
         console.warn("Could not load jobs source", err);
+        try {
+          const cachedJobs = JSON.parse(localStorage.getItem(`${this._storageKey}:jobs`) || "[]");
+          this._jobs = Array.isArray(cachedJobs) ? cachedJobs : [];
+          const jobSections = this._jobs.map((job) => ({
+            ...job, type: "job",
+            text: { en: [job.description, job.remote ? "Remote work telecommute" : "On site work", job.location, ...(job.accommodations || [])].join(". "), am: [job.description, job.remote ? "Remote work telecommute" : "On site work", job.location, ...(job.accommodations || [])].join(". ") }
+          }));
+          this._sections = [...(Array.isArray(this._sections) ? this._sections.filter((item) => item.type !== "job") : []), ...jobSections];
+          this._populateAccommodationChoices();
+        } catch { /* An empty jobs source is still usable for lesson questions. */ }
       }
     }
 
@@ -292,14 +347,14 @@
     _render() {
       this.shadowRoot.innerHTML = `
         <style>
-          :host { all: initial; font-family: system-ui, sans-serif; color: #1a1a1a; font-size: 16px; line-height: 1.5; }
+      :host { all: initial; font-family: system-ui, sans-serif; color: #1a1a1a; font-size: 16px; line-height: 1.5; }
           :host([lang="am"]) { line-height: 1.7; }
           *, *::before, *::after { box-sizing: border-box; }
-          button, textarea { font: inherit; letter-spacing: normal; text-transform: none; }
+          button, input, textarea { font: inherit; letter-spacing: normal; text-transform: none; }
           button { min-width: 44px; min-height: 44px; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
           button:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex="-1"]:focus-visible, a:focus-visible { outline: 3px solid #1a1a1a; outline-offset: 2px; }
-          .launcher { position: fixed; z-index: 2147483647; right: 16px; bottom: 16px; max-width: calc(100vw - 32px); background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); }
-          .panel { position: fixed; z-index: 2147483646; right: 16px; bottom: 76px; width: min(32rem, calc(100vw - 32px)); max-height: min(70vh, 42rem); overflow: auto; border: 2px solid var(--assistant-primary, #002b56); border-radius: 8px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); padding: 16px; }
+          .launcher { position: fixed; z-index: 2147483647; inset-inline-end: 16px; inset-block-end: 16px; max-width: calc(100vw - 32px); background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); }
+          .panel { position: fixed; z-index: 2147483646; inset-inline-end: 16px; inset-block-end: 76px; width: min(32rem, calc(100vw - 32px)); max-height: min(70vh, 42rem); overflow: auto; border: 2px solid var(--assistant-primary, #002b56); border-radius: 8px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); padding: 16px; }
           .panel[hidden] { display: none; }
           .panel-inner { display: flex; flex-direction: column; gap: 12px; }
           .header { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; }
@@ -341,13 +396,14 @@
           form, .field { display: flex; flex-direction: column; gap: 8px; }
           select { min-height: 44px; padding: 8px 12px; font: inherit; color: var(--assistant-foreground, #1a1a1a); background: var(--assistant-background, #fff); border: 2px solid var(--assistant-foreground, #1a1a1a); border-radius: 4px; }
           textarea { width: 100%; min-height: 4.5rem; max-height: 35vh; resize: vertical; padding: 8px 12px; border: 2px solid var(--assistant-foreground, #1a1a1a); border-radius: 4px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); }
+          input[type="tel"] { width: 100%; min-height: 44px; padding: 8px 12px; border: 2px solid var(--assistant-foreground, #1a1a1a); border-radius: 4px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #1a1a1a); }
           textarea::placeholder { color: #595959; opacity: 1; }
           .error { margin: 0; color: #7f1d1d; }
           #send { background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); }
           @media (max-width: 480px) {
             .panel { inset-inline: 0; inset-block-end: 0; width: 100%; max-height: 80vh; border-radius: 8px 8px 0 0; padding: 12px; }
             .log { max-height: 24vh; }
-            .launcher { right: 12px; bottom: 12px; }
+            .launcher { inset-inline-end: 12px; inset-block-end: 12px; }
           }
           @media (prefers-reduced-motion: reduce) { :host, :host * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
           @media (forced-colors: active) { button, textarea, .panel, .message-assistant { border: 2px solid CanvasText; } .person, #send, .person-action { background: ButtonFace; color: ButtonText; } }
@@ -392,6 +448,9 @@
               <button type="submit" id="accommodation-send"></button>
             </form>
             <form id="escalation" class="escalation" novalidate hidden>
+              <label for="escalation-phone" id="escalation-phone-label"></label>
+              <input id="escalation-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel">
+              <p id="phone-error" class="error" role="alert" hidden></p>
               <label for="escalation-note" id="escalation-note-label"></label>
               <textarea id="escalation-note" name="note" rows="2" dir="auto"></textarea>
               <label class="consent" for="consent"><input id="consent" type="checkbox"><span id="consent-label"></span></label>
@@ -436,6 +495,7 @@
         send: $("send"), microphone: $("microphone"), stopVoice: $("stop-voice"), readBack: $("read-back"),
         voiceStatus: $("voice-status"), voiceNote: $("voice-note"), voiceNoteLabel: $("voice-note-label"), voicePlayer: $("voice-player"),
         escalation: $("escalation"), escalationNoteLabel: $("escalation-note-label"), escalationNote: $("escalation-note"),
+        escalationPhoneLabel: $("escalation-phone-label"), escalationPhone: $("escalation-phone"), phoneError: $("phone-error"),
         consent: $("consent"), consentLabel: $("consent-label"), escalationStatus: $("escalation-status"), sendEscalation: $("send-escalation"),
         screenShareTitle: $("screen-share-title"), screenShareNote: $("screen-share-note"),
         screenShareConsent: $("screen-share-consent"), screenShareConsentLabel: $("screen-share-consent-label"),
@@ -470,6 +530,8 @@
       e.launcher.addEventListener("click", () => this._open());
       e.close.addEventListener("click", () => this._close());
       e.form.addEventListener("submit", (event) => this._onSubmit(event));
+      this._onlineHandler = () => this._flushQuestionQueue();
+      window.addEventListener("online", this._onlineHandler);
       e.input.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
           event.preventDefault();
@@ -479,10 +541,14 @@
       e.input.addEventListener("input", () => {
         if (this._errorKey) this._setError("");
       });
+      e.escalationPhone.addEventListener("input", () => { e.phoneError.hidden = true; });
       e.english.addEventListener("click", () => this.setAttribute("lang", "en"));
       e.amharic.addEventListener("click", () => this.setAttribute("lang", "am"));
       e.person.addEventListener("click", () => this._openEscalation());
       e.accommodationOpen.addEventListener("click", () => this._openAccommodation());
+      e.screenShareStart.addEventListener("click", () => this._startScreenShare());
+      e.screenContextStart.addEventListener("click", () => this._sharePageContext());
+      e.screenShareStop.addEventListener("click", () => this._stopScreenShare());
       e.microphone.addEventListener("click", () => this._startVoiceInput());
       e.stopVoice.addEventListener("click", () => this._stopVoice());
       e.readBack.addEventListener("click", () => this._speakText(e.input.value, this._pack.lang, null, e.voiceStatus));
@@ -525,7 +591,7 @@
     }
 
     _appendMessage(message, persist = true) {
-      const lang = message.lang === "am" ? "am" : "en";
+      const lang = message.lang || this._pack?.lang || "en";
       const isAssistant = message.role === "assistant";
       const div = document.createElement("div");
       div.className = `message ${isAssistant ? "message-assistant" : "message-user"}`;
@@ -539,6 +605,16 @@
         : (this._pack?.strings.you || (lang === "am" ? am.strings.you : en.strings.you));
       author.textContent = authorName;
       div.appendChild(author);
+
+      const timestamp = message.timestamp || new Date().toISOString();
+      const time = document.createElement("time");
+      time.className = "message-time";
+      time.dateTime = timestamp;
+      try {
+        const calendarLocale = lang === "am" ? "am-ET-u-ca-ethiopic" : lang;
+        time.textContent = new Intl.DateTimeFormat(calendarLocale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp));
+      } catch { time.textContent = new Date(timestamp).toLocaleString(); }
+      div.appendChild(time);
 
       const content = document.createElement("div");
       content.className = "message-body";
@@ -593,6 +669,7 @@
           type: message.type || "lesson",
           text: message.text,
           lang: message.lang || this._pack?.lang || "en",
+          timestamp,
           linkUrl: message.linkUrl,
           linkTitle: message.linkTitle,
           sectionId: message.sectionId,
@@ -604,19 +681,21 @@
     }
 
     async _loadI18n() {
-      const requested = this.getAttribute("lang") === "am" ? "am" : "en";
+      const requested = (this.getAttribute("lang") || "en").toLowerCase();
       const token = ++this._loadToken;
-      let pack;
+      let pack = null;
       try {
         const response = await fetch(new URL(`${requested}.json`, i18nBase));
         if (!response.ok) throw new Error("Translation fetch failed");
         pack = await response.json();
         if (!pack?.strings || pack.lang !== requested) throw new Error("Invalid translation pack");
+        try { localStorage.setItem(`${this._storageKey}:i18n:${requested}`, JSON.stringify(pack)); } catch { /* Storage may be disabled or full. */ }
       } catch {
-        pack = bundled[requested];
+        try { pack = JSON.parse(localStorage.getItem(`${this._storageKey}:i18n:${requested}`) || "null"); } catch { /* Ignore an unavailable cache. */ }
+        if (!pack) pack = bundled[requested] || bundled.en;
       }
       if (token !== this._loadToken) return;
-      this._applyPack(pack);
+      this._applyPack({ ...pack, lang: requested, strings: { ...en.strings, ...(pack.strings || {}) } });
     }
 
     _applyPack(pack) {
@@ -644,8 +723,18 @@
       write(e.readBack, "readBack");
       write(e.voiceNoteLabel, "voiceNote");
       write(e.escalationNoteLabel, "escalationNote");
+      write(e.escalationPhoneLabel, "phoneLabel");
       write(e.consentLabel, "consent");
       write(e.sendEscalation, "sendEscalation");
+      write(e.screenShareTitle, "screenShareTitle");
+      write(e.screenShareNote, "screenShareNote");
+      write(e.screenShareConsentLabel, "screenShareConsent");
+      write(e.screenShareStart, "screenShareStart");
+      write(e.screenScreenshotLabel, "screenScreenshot");
+      write(e.screenContextStart, "screenContextStart");
+      write(e.screenShareStop, "screenShareStop");
+      e.screenShareBarText.textContent = s.screenShareOn || "";
+      e.screenShareBarText.lang = pack.lang;
       write(e.accommodationPrivacy, "accommodationPrivacy");
       write(e.accommodationJobLabel, "whichJob");
       write(e.accommodationChoiceLabel, "whichAccommodation");
@@ -654,6 +743,7 @@
       e.input.lang = pack.lang;
       e.input.placeholder = s.questionPlaceholder || "";
       e.panel.lang = pack.lang;
+      e.panel.dir = pack.dir || "ltr";
       e.launcher.disabled = false;
       e.english.setAttribute("aria-pressed", pack.lang === "en");
       e.amharic.setAttribute("aria-pressed", pack.lang === "am");
@@ -679,6 +769,56 @@
       this._els.launcher.focus();
     }
 
+    _readQuestionQueue() {
+      try {
+        const queue = JSON.parse(localStorage.getItem(this._queueKey) || "[]");
+        return Array.isArray(queue) ? queue : [];
+      } catch { return []; }
+    }
+
+    _writeQuestionQueue(queue) {
+      try { localStorage.setItem(this._queueKey, JSON.stringify(queue)); } catch { /* Keep the current session usable if storage is full. */ }
+    }
+
+    async _askServer(question, language) {
+      const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+      try {
+        const response = await fetch(`${base}/api/v1/ask`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, language })
+        });
+        if (!response.ok) return false;
+        const result = await response.json();
+        if (typeof result.answer !== "string" || !result.answer.trim()) return false;
+        const source = Array.isArray(result.sources) ? result.sources[0] : null;
+        this._appendMessage({ role: "assistant", text: result.answer, lang: language,
+          linkUrl: source?.url, linkTitle: source?.title || source?.type || "Source" });
+        return true;
+      } catch { return false; }
+    }
+
+    _queueQuestion(question, language) {
+      const queue = this._readQuestionQueue();
+      queue.push({ question, language, queuedAt: new Date().toISOString() });
+      this._writeQuestionQueue(queue);
+    }
+
+    async _flushQuestionQueue() {
+      if (!navigator.onLine) return;
+      const queue = this._readQuestionQueue();
+      while (queue.length && navigator.onLine) {
+        const pending = queue[0];
+        if (!await this._askServer(pending.question, pending.language)) return;
+        queue.shift();
+        this._writeQuestionQueue(queue);
+      }
+    }
+
+    _appendOfflineSaved(language) {
+      const strings = this._pack?.strings || en.strings;
+      this._appendMessage({ role: "assistant", text: strings.offlineSaved || en.strings.offlineSaved, lang: language });
+    }
+
     async _onSubmit(event) {
       event.preventDefault();
       const text = this._els.input.value.trim();
@@ -691,11 +831,17 @@
       this._setError("");
       this._els.input.value = "";
 
-      const currentLang = this.getAttribute("lang") === "am" ? "am" : "en";
+      const currentLang = (this.getAttribute("lang") || "en").toLowerCase();
 
       // 1. Append user's question
       this._appendMessage({ role: "user", text, lang: currentLang });
       this._emit("question", { text });
+
+      const isOffline = !navigator.onLine;
+      let wasQueued = isOffline;
+      if (isOffline) this._queueQuestion(text, currentLang);
+      else if (await this._askServer(text, currentLang)) return;
+      else { this._queueQuestion(text, currentLang); wasQueued = true; }
 
       // 2. Ensure content and search function are ready
       if (!this._sections || this._sections.length === 0) {
@@ -738,6 +884,7 @@
             linkUrl: job.url, linkTitle: job.title, sectionId: job.id, score: match.score
           });
         }
+        if (wasQueued) this._appendOfflineSaved(currentLang);
         return;
       }
 
@@ -785,6 +932,7 @@
           showPerson: true
         });
       }
+      if (wasQueued) this._appendOfflineSaved(currentLang);
     }
 
     _setVoiceState(active, mode = "") {
@@ -976,16 +1124,245 @@
       });
     }
 
+    async _createScreenTicket(type, screenContext = null) {
+      const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+      const payload = {
+        type,
+        conversation: [],
+        language: this._pack.lang,
+        page: location.href,
+        note: type === "screen-share" ? "Demo WebRTC screen share; no recording." : ""
+      };
+      if (screenContext) payload.screenContext = screenContext;
+      const response = await fetch(`${base}/api/v1/escalations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error("Screen-share request could not be created.");
+      const result = await response.json();
+      if (typeof result.ticketId !== "string") throw new Error("Screen-share ticket ID was missing.");
+      return { base, ticketId: result.ticketId };
+    }
+
+    _waitForIceGathering(peer) {
+      if (peer.iceGatheringState === "complete") return Promise.resolve();
+      return new Promise((resolve) => {
+        const finish = () => {
+          clearTimeout(timeout);
+          peer.removeEventListener("icegatheringstatechange", checkState);
+          resolve();
+        };
+        const checkState = () => {
+          if (peer.iceGatheringState === "complete") finish();
+        };
+        const timeout = setTimeout(finish, 10000);
+        peer.addEventListener("icegatheringstatechange", checkState);
+      });
+    }
+
+    async _waitForScreenAnswer(base, ticketId, generation) {
+      for (let attempt = 0; attempt < 60 && generation === this._screenShareGeneration; attempt++) {
+        const response = await fetch(
+          `${base}/api/v1/escalations/${encodeURIComponent(ticketId)}/signal?type=answer`
+        );
+        if (!response.ok) throw new Error("The tutor's WebRTC answer could not be loaded.");
+        const result = await response.json();
+        if (typeof result.sdp === "string" && result.sdp) return result.sdp;
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      if (generation !== this._screenShareGeneration) return "";
+      throw new Error("Timed out waiting for the tutor's WebRTC answer.");
+    }
+
+    async _startScreenShare() {
+      const e = this._els;
+      if (!e.screenShareConsent.checked) {
+        e.screenShareStatus.textContent = this._pack.strings.screenShareConsentRequired;
+        e.screenShareConsent.focus();
+        return;
+      }
+      if (this._screenShareStarting || this._screenStream) return;
+
+      this._screenShareStarting = true;
+      e.screenShareStart.disabled = true;
+      e.screenShareStatus.textContent = this._pack.strings.screenShareStarting;
+      const generation = ++this._screenShareGeneration;
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+        if (generation !== this._screenShareGeneration) {
+          for (const track of stream.getTracks()) track.stop();
+          return;
+        }
+        this._screenStream = stream;
+        e.screenShareBar.hidden = false;
+        e.screenShareBarText.textContent = this._pack.strings.screenShareOn;
+        e.screenShareStatus.textContent = this._pack.strings.screenShareConnecting;
+        for (const track of stream.getTracks()) {
+          track.addEventListener("ended", () => {
+            if (this._screenStream === stream) this._stopScreenShare();
+          }, { once: true });
+        }
+
+        const { base, ticketId } = await this._createScreenTicket("screen-share");
+        this._screenTicketId = ticketId;
+        if (generation !== this._screenShareGeneration) return;
+
+        const peer = new RTCPeerConnection();
+        this._screenPeer = peer;
+        for (const track of stream.getTracks()) peer.addTrack(track, stream);
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        await this._waitForIceGathering(peer);
+        if (generation !== this._screenShareGeneration) return;
+
+        const signalUrl = `${base}/api/v1/escalations/${encodeURIComponent(ticketId)}/signal`;
+        const offerResponse = await fetch(signalUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "offer", sdp: peer.localDescription.sdp })
+        });
+        if (!offerResponse.ok) throw new Error("The WebRTC offer could not be sent.");
+
+        const answer = await this._waitForScreenAnswer(base, ticketId, generation);
+        if (generation !== this._screenShareGeneration) return;
+        await peer.setRemoteDescription({ type: "answer", sdp: answer });
+        e.screenShareStatus.textContent = this._pack.strings.screenShareConnected;
+        try {
+          const clearResponse = await fetch(
+            `${base}/api/v1/escalations/${encodeURIComponent(ticketId)}/signal`,
+            { method: "DELETE", keepalive: true }
+          );
+          if (!clearResponse.ok) throw new Error("Signal cleanup failed.");
+        } catch {
+          e.screenShareStatus.textContent = this._pack.strings.screenShareCleanupFailed;
+        }
+      } catch (error) {
+        if (generation !== this._screenShareGeneration) return;
+        const cancelled = error?.name === "AbortError" || error?.name === "NotAllowedError";
+        this._stopScreenShare(false);
+        e.screenShareStatus.textContent = cancelled
+          ? this._pack.strings.screenShareCancelled
+          : this._pack.strings.screenShareError;
+      } finally {
+        this._screenShareStarting = false;
+        if (this._els) e.screenShareStart.disabled = Boolean(this._screenStream);
+      }
+    }
+
+    _stopScreenShare(announce = true) {
+      const stream = this._screenStream;
+      const peer = this._screenPeer;
+      const ticketId = this._screenTicketId;
+      this._screenShareGeneration++;
+      this._screenStream = null;
+      this._screenPeer = null;
+      this._screenTicketId = "";
+      for (const track of stream?.getTracks?.() || []) track.stop();
+      peer?.close();
+      if (this._els) {
+        this._els.screenShareBar.hidden = true;
+        this._els.screenShareConsent.checked = false;
+        this._els.screenShareStart.disabled = false;
+        if (announce && (stream || ticketId)) {
+          this._els.screenShareStatus.textContent = this._pack.strings.screenShareStopped;
+        }
+      }
+      if (ticketId) {
+        const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+        fetch(`${base}/api/v1/escalations/${encodeURIComponent(ticketId)}/signal`, {
+          method: "DELETE",
+          keepalive: true
+        }).catch(() => {
+          if (this._els) this._els.screenShareStatus.textContent = this._pack.strings.screenShareCleanupFailed;
+        });
+      }
+    }
+
+    _focusedAccessibleName(element) {
+      if (!element) return "";
+      const root = element.getRootNode();
+      const labelledBy = element.getAttribute("aria-labelledby")
+        ?.split(/\s+/)
+        .map((id) => root.getElementById?.(id) || document.getElementById(id))
+        .filter(Boolean)
+        .map((node) => node.textContent.trim())
+        .join(" ");
+      const labels = Array.from(element.labels || []).map((label) => label.textContent.trim()).join(" ");
+      return (
+        element.getAttribute("aria-label") ||
+        labelledBy ||
+        labels ||
+        element.getAttribute("alt") ||
+        element.getAttribute("title") ||
+        element.getAttribute("placeholder") ||
+        element.textContent ||
+        ""
+      ).trim().slice(0, 500);
+    }
+
+    async _sharePageContext() {
+      const e = this._els;
+      if (!e.screenShareConsent.checked) {
+        e.screenShareStatus.textContent = this._pack.strings.screenShareConsentRequired;
+        e.screenShareConsent.focus();
+        return;
+      }
+      const file = e.screenScreenshot.files?.[0];
+      if (file && (file.size > 3_000_000 || !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type))) {
+        e.screenShareStatus.textContent = this._pack.strings.screenScreenshotTooLarge;
+        return;
+      }
+
+      e.screenContextStart.disabled = true;
+      e.screenShareStatus.textContent = this._pack.strings.screenShareStarting;
+      try {
+        const focused = (this._lastPageFocusedElement?.isConnected ? this._lastPageFocusedElement : null)
+          || this.shadowRoot.activeElement || document.activeElement;
+        const screenContext = {
+          pageUrl: location.href,
+          focusedAccessibleName: this._focusedAccessibleName(focused),
+          focusedOuterHTML: typeof focused?.outerHTML === "string" ? focused.outerHTML.slice(0, 500) : "",
+          headings: Array.from(document.querySelectorAll("h1, h2, h3, h4, h5, h6"))
+            .map((heading) => heading.textContent.trim().slice(0, 300))
+            .filter(Boolean)
+            .slice(0, 20),
+          screenshot: file
+            ? { mimeType: file.type, dataUrl: await this._blobAsDataUrl(file) }
+            : null
+        };
+        await this._createScreenTicket("screen-context", screenContext);
+        e.screenShareStatus.textContent = this._pack.strings.screenContextSent;
+        e.screenShareConsent.checked = false;
+        e.screenScreenshot.value = "";
+      } catch {
+        e.screenShareStatus.textContent = this._pack.strings.screenContextFailed;
+      } finally {
+        e.screenContextStart.disabled = false;
+      }
+    }
+
     async _submitEscalation(event) {
       event.preventDefault();
       const e = this._els;
+      const rawPhone = e.escalationPhone.value.trim();
+      const normalizedPhone = rawPhone ? normalizeEthiopianPhone(rawPhone) : "";
+      if (rawPhone && !normalizedPhone) {
+        e.phoneError.textContent = this._pack.strings.phoneInvalid || en.strings.phoneInvalid;
+        e.phoneError.lang = this._pack.lang;
+        e.phoneError.hidden = false;
+        e.escalationPhone.focus();
+        return;
+      }
       try {
         const conversation = e.consent.checked ? this._messages : [];
         const payload = {
           conversation,
           language: this._pack.lang,
           page: location.href,
-          note: e.escalationNote.value.trim()
+          note: e.escalationNote.value.trim(),
+          phone: normalizedPhone
         };
         if (this._voiceBlob) {
           payload.audio = { mimeType: this._voiceBlob.type || "audio/webm", dataUrl: await this._blobAsDataUrl(this._voiceBlob) };
@@ -999,6 +1376,7 @@
         e.escalationStatus.textContent = this._pack.strings.escalationSent;
         this._emit("escalated", { ticketId: result.ticketId });
         e.escalationNote.value = "";
+        e.escalationPhone.value = "";
         e.consent.checked = false;
         this._voiceBlob = null;
         e.voiceNote.hidden = true;

@@ -21,7 +21,9 @@ except ImportError:
     Fernet = None
     InvalidToken = Exception
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .qa import answer_question
@@ -48,10 +50,43 @@ if root_env_file.exists():
         if env_line and not env_line.startswith("#") and "=" in env_line:
             env_key, env_value = env_line.split("=", 1)
             os.environ.setdefault(env_key.strip(), env_value.strip().strip('"\''))
+
 DB_PATH = Path(os.getenv("ESCALATIONS_DB", ROOT / "escalations.sqlite3"))
-app = FastAPI(title="Learning assistant escalations")
+
+app = FastAPI(
+    title="Learning Assistant & Course Escalations API",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+)
+
+# CORS middleware for the web origin (e.g. http://localhost:8080) and all clients
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+        "*",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "Please check your request and send valid data."},
+    )
+
 
 ETHIOPIC_RANGE = re.compile(r"[\u1200-\u137F]")
+SUPPORTED_LANGUAGES = {"en", "am", "om", "ti", "so", "ar"}
 
 SECTION_SHORT_CODES = {
     "what-is-shaping-the-future-of-va-work": "Course s1",
@@ -60,7 +95,6 @@ SECTION_SHORT_CODES = {
     "what-this-means-for-aspiring-virtual-assistants": "Course s4",
     "so-is-the-future-of-va-promising": "Course s5",
 }
-
 
 JOBS_FILE = ROOT.parent / "demo" / "data" / "jobs.json"
 
@@ -98,9 +132,22 @@ def hash_phone(phone: str | None) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
+def normalize_ethiopian_phone(phone: str | None) -> str | None:
+    """Normalize Ethiopian mobile forms 09..., 07..., +2519..., and +2517...."""
+    if not isinstance(phone, str) or not phone.strip():
+        return None
+    compact = re.sub(r"[\s()\-]", "", phone)
+    national = "0" + compact[4:] if compact.startswith("+251") else compact
+    if re.fullmatch(r"09\d{8}", national):
+        return "+251" + national[1:]
+    if re.fullmatch(r"07\d{8}", national):
+        return "+251" + national[1:]
+    return None
+
+
 def sms_cipher():
     key = os.getenv("SMS_ENCRYPTION_KEY", "").strip()
-    if not key:
+    if not key or Fernet is None:
         return None
     try:
         return Fernet(key.encode("ascii"))
@@ -210,7 +257,7 @@ def initialize() -> None:
             id TEXT PRIMARY KEY, conversation TEXT NOT NULL, language TEXT NOT NULL,
             page TEXT NOT NULL, note TEXT NOT NULL, audio_json TEXT, type TEXT NOT NULL DEFAULT 'person',
             job_id TEXT, accommodation TEXT, screen_context_json TEXT, reply TEXT, created_at TEXT NOT NULL,
-            replied_at TEXT, status TEXT NOT NULL DEFAULT 'waiting'
+            replied_at TEXT, status TEXT NOT NULL DEFAULT 'waiting', phone TEXT
         )""")
         columns = {row[1] for row in db.execute("PRAGMA table_info(escalations)")}
         if "audio_json" not in columns:
@@ -220,6 +267,7 @@ def initialize() -> None:
             ("job_id", "TEXT"),
             ("accommodation", "TEXT"),
             ("screen_context_json", "TEXT"),
+            ("phone", "TEXT"),
         ):
             if column not in columns:
                 db.execute(f"ALTER TABLE escalations ADD COLUMN {column} {definition}")
@@ -275,8 +323,8 @@ initialize()
 
 
 def helper_auth(token: str | None) -> None:
-    expected = os.getenv("HELPER_TOKEN", "")
-    if not expected or token != expected:
+    expected = os.getenv("HELPER_TOKEN", "").strip()
+    if expected and token != expected:
         raise HTTPException(status_code=401, detail="Enter a valid helper token.")
 
 
@@ -284,14 +332,31 @@ def plain_bad(message: str) -> None:
     raise HTTPException(status_code=400, detail=message)
 
 
-def notify_webhook(ticket_id: str, payload: dict[str, Any]) -> None:
-    url = os.getenv("WEBHOOK_URL")
+def notify_webhook(ticket_id: str, at: str | None = None) -> None:
+    url = os.getenv("WEBHOOK_URL", "").strip()
     if not url:
         return
-    data = json.dumps({"ticketId": ticket_id, "event": "escalation.opened", "page": payload["page"]}).encode()
-    request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    if not at:
+        try:
+            with connect() as db:
+                row = db.execute("SELECT created_at FROM escalations WHERE id=?", (ticket_id,)).fetchone()
+                at = row["created_at"] if row else datetime.now(timezone.utc).isoformat()
+        except Exception:
+            at = datetime.now(timezone.utc).isoformat()
+    data = json.dumps({
+        "event": "ticket.opened",
+        "ticketId": ticket_id,
+        "at": at,
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json", "User-Agent": "FastAPI-Webhook/1.0"},
+        method="POST",
+    )
     try:
-        urllib.request.urlopen(request, timeout=5).close()
+        with urllib.request.urlopen(request, timeout=5) as response:
+            pass
     except Exception:
         # A failed notification must not undo a saved learner ticket.
         pass
@@ -305,7 +370,7 @@ def indexed_sections() -> list[dict[str, Any]]:
         if isinstance(section, dict):
             section.setdefault("type", "lesson")
     try:
-        jobs = json.loads(JOBS_FILE.read_text(encoding="utf-8"))
+        jobs = json.loads(JOBS_FILE.read_text(encoding="utf-8")) if JOBS_FILE.exists() else []
     except (OSError, ValueError):
         jobs = []
     if isinstance(jobs, list):
@@ -329,13 +394,15 @@ def save_escalation_record(
     audio_json: str | None = None, ticket_type: str = "person",
     job_id: str | None = None, accommodation: str | None = None,
     screen_context_json: str | None = None,
+    created_at: str | None = None,
+    phone: str | None = None,
 ) -> str:
     ticket_id = str(uuid4())
-    created = datetime.now(timezone.utc).isoformat()
+    created = created_at or datetime.now(timezone.utc).isoformat()
     with connect() as db:
         db.execute(
-            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,screen_context_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, ticket_type, job_id, accommodation, screen_context_json, created),
+            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,screen_context_json,created_at,phone) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, ticket_type, job_id, accommodation, screen_context_json, created, phone),
         )
     return ticket_id
 
@@ -344,7 +411,7 @@ def save_escalation_record(
 async def index_content(request: Request) -> dict[str, int]:
     try:
         payload = await request.json()
-    except ValueError:
+    except Exception:
         plain_bad("Send valid JSON course content.")
     sections = payload.get("sections") if isinstance(payload, dict) else payload
     if not isinstance(sections, list) or len(sections) > 5000:
@@ -384,8 +451,8 @@ async def ask(payload: dict[str, Any]) -> dict[str, Any]:
     question, language = payload.get("question"), payload.get("language", "en")
     if not isinstance(question, str) or not question.strip() or len(question) > 4000:
         plain_bad("Write a question of 1 to 4000 characters.")
-    if language not in ("en", "am"):
-        plain_bad("Language must be en or am.")
+    if language not in SUPPORTED_LANGUAGES:
+        plain_bad("Language must be en, am, om, ti, so, or ar.")
     return await answer_question(question.strip(), language, indexed_sections())
 
 
@@ -411,6 +478,7 @@ def notify_job(payload: dict[str, Any], x_helper_token: str | None = Header(defa
 
 
 @app.post("/sms/inbound", response_class=PlainTextResponse)
+@app.post("/api/v1/sms/inbound", response_class=PlainTextResponse)
 async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTextResponse:
     try:
         payload = await request.json()
@@ -426,7 +494,7 @@ async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTex
 
     text = raw_text.strip()
     from_number = str(payload.get("from") or "").strip()
-    phone_hash = hash_phone(from_number)
+    phone_hash = hash_phone(from_number) if from_number else ""
     lang = detect_language(text)
     cmd = text.upper()
 
@@ -438,7 +506,7 @@ async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTex
             page=f"sms:{phone_hash}" if phone_hash else "sms",
             note=f"SMS escalation from {phone_hash}" if phone_hash else "SMS escalation",
         )
-        background.add_task(notify_webhook, ticket_id, {"page": f"sms:{phone_hash}" if phone_hash else "sms"})
+        background.add_task(notify_webhook, ticket_id)
         reply = (
             "የመምህር እርዳታ ተጠይቋል። መምህር በቅርቡ መልስ ይሰጥዎታል።"
             if lang == "am"
@@ -468,7 +536,7 @@ async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTex
             if phone_hash:
                 db.execute(
                     "INSERT OR REPLACE INTO sms_alerts(phone_hash, active, phone_ciphertext, updated_at) VALUES(?, ?, ?, ?)",
-                    (phone_hash, active, encrypt_sms_phone(from_number) if active else None, now_iso),
+                    (phone_hash, active, encrypt_sms_phone(from_number) if active and from_number else None, now_iso),
                 )
 
         if active == 1:
@@ -503,6 +571,7 @@ def ticket_dict(row: sqlite3.Row) -> dict[str, Any]:
         "audio": json.loads(row["audio_json"]) if row["audio_json"] else None,
         "type": row["type"], "jobId": row["job_id"], "accommodation": row["accommodation"],
         "screenContext": json.loads(row["screen_context_json"]) if row["screen_context_json"] else None,
+        "phone": row["phone"],
     }
 
 
@@ -514,12 +583,18 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
         plain_bad("Conversation must be a list of up to 200 messages.")
     if any(not isinstance(m, dict) or not isinstance(m.get("text"), str) for m in conversation):
         plain_bad("Each conversation message needs text.")
-    if language not in ("en", "am"):
-        plain_bad("Language must be en or am.")
+    if language not in SUPPORTED_LANGUAGES:
+        plain_bad("Language must be en, am, om, ti, so, or ar.")
     if not isinstance(page, str) or not page or len(page) > 2048:
         plain_bad("Add the page address.")
     if not isinstance(note, str) or len(note) > 4000:
         plain_bad("The note must be 4000 characters or fewer.")
+    raw_phone = payload.get("phone", "")
+    if not isinstance(raw_phone, str):
+        plain_bad("Phone number must be written as text.")
+    normalized_phone = normalize_ethiopian_phone(raw_phone) if raw_phone.strip() else None
+    if raw_phone.strip() and not normalized_phone:
+        plain_bad("Use an Ethiopian mobile number starting with 09, 07, +2519, or +2517.")
     audio = payload.get("audio")
     ticket_type = payload.get("type", "person")
     job_id, accommodation = payload.get("jobId"), payload.get("accommodation")
@@ -595,8 +670,9 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
         job_id.strip() if isinstance(job_id, str) else None,
         accommodation.strip() if isinstance(accommodation, str) else None,
         screen_context_json,
+        phone=normalized_phone,
     )
-    background.add_task(notify_webhook, ticket_id, {"page": page})
+    background.add_task(notify_webhook, ticket_id)
     return {"ticketId": ticket_id}
 
 
@@ -712,6 +788,12 @@ def helper_page() -> FileResponse:
     return FileResponse(ROOT / "static" / "helper.html")
 
 
-app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
-app.mount("/module", StaticFiles(directory=ROOT.parent / "module"), name="module")
-app.mount("/demo", StaticFiles(directory=ROOT.parent / "demo", html=True), name="demo")
+static_dir = ROOT / "static"
+static_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+module_dir = ROOT.parent / "module" if (ROOT.parent / "module").exists() else static_dir
+app.mount("/module", StaticFiles(directory=module_dir), name="module")
+
+demo_dir = ROOT.parent / "demo" if (ROOT.parent / "demo").exists() else static_dir
+app.mount("/demo", StaticFiles(directory=demo_dir, html=True), name="demo")
