@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guided Learning Path — Savanna</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #fdfdfd; color: #1a1a1a; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; }
+    .site-header { background: #002b56; color: #fff; padding: 8px 16px; }
+    .site-nav { display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: 900px; margin: 0 auto; }
+    .site-nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 4px 8px; border-radius: 4px; color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+    .site-nav a:hover, .site-nav a:focus-visible { background: #174b78; }
+    :focus-visible { outline: 3px solid #b04a00; outline-offset: 3px; }
+    .page { max-width: 800px; margin: 32px auto; padding: 0 20px 80px; }
+    h1 { margin: 0 0 12px; color: #002b56; font-size: clamp(1.75rem, 5vw, 2.4rem); line-height: 1.2; }
+    h2 { margin: 28px 0 12px; color: #0f172a; font-size: 1.5rem; line-height: 1.3; }
+    p { margin: 0 0 16px; color: #334155; }
+    .topic-list { padding-inline-start: 1.5rem; }
+    .topic-list li { margin-block: 0 12px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; }
+    .topic-list a, .page-link { color: #003f79; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+    .topic-list p { margin: 6px 0 0; }
+    @media (max-width: 480px) { .page { margin-block: 20px; padding-inline: 16px; } }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="site-nav" aria-label="Savanna pages">
+      <a href="homepage-v1-paced.html" aria-current="page">Guided path</a>
+      <a href="homepage-v1-self-paced.html">Learn at your own pace</a>
+      <a href="concept-with-navigation.html">Course lesson</a>
+      <a href="jobs.html">Test jobs</a>
+    </nav>
+  </header>
+  <main class="page">
+    <h1>Guided path for virtual assistant skills</h1>
+    <p>Work through the five course topics in order. This demo does not set deadlines or track progress.</p>
+    <section id="learning-path" aria-labelledby="path-heading">
+      <h2 id="path-heading">Suggested lesson order</h2>
+      <ol class="topic-list">
+        <li><a href="concept-with-navigation.html#what-is-shaping-the-future-of-va-work">What is shaping the future of VA work?</a><p>Start with the changes affecting virtual assistance.</p></li>
+        <li><a href="concept-with-navigation.html#artificial-intelligence-and-the-future-of-va-work">Artificial intelligence and VA work</a><p>Explore how AI can support routine tasks.</p></li>
+        <li><a href="concept-with-navigation.html#what-clients-are-likely-to-value-more-and-more">What clients value</a><p>Learn about communication, reliability, and problem solving.</p></li>
+        <li><a href="concept-with-navigation.html#what-this-means-for-aspiring-virtual-assistants">Advice for aspiring virtual assistants</a><p>Review foundational skills and ways to prepare.</p></li>
+        <li><a href="concept-with-navigation.html#so-is-the-future-of-va-promising">Is the future promising?</a><p>Finish with the outlook for skilled virtual assistants.</p></li>
+      </ol>
+    </section>
+    <section aria-labelledby="help-heading">
+      <h2 id="help-heading">Need help?</h2>
+      <p>Open the learning assistant to ask about the lesson or request help from a tutor.</p>
+      <a class="page-link" href="concept-with-navigation.html">Open the course lesson</a>
+    </section>
+  </main>
+  <script src="../../module/db-assistant.js"></script>
+  <db-assistant lang="en"></db-assistant>
+</body>
+</html>

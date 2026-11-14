@@ -48,7 +48,7 @@ def test_provider_failure_falls_back_to_best_section(monkeypatch):
     ("Can you give me legal advice?", "en"),
     ("Which medicine should I take for this symptom?", "en"),
     ("How do I apply for an immigration visa?", "en"),
-    ("ስለ ሕግ ጥያቄ አለኝ", "am"),
+    ("ስለ ሕግ ምክር እፈልጋለሁ", "am"),
 ])
 def test_sensitive_topic_is_refused_without_provider_call(question, language):
     provider = FakeProvider({"text": "unsafe generated answer"})
