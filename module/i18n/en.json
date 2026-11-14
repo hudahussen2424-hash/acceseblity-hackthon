@@ -9,6 +9,16 @@
     "questionLabel": "Your question, required",
     "questionPlaceholder": "Ask about this lesson",
     "ask": "Ask",
-    "errorEmpty": "Enter a question."
+    "errorEmpty": "Enter a question.",
+    "person": "Talk to a person",
+    "language": "Language",
+    "you": "You",
+    "escalationNote": "Optional note",
+    "consent": "Share this conversation with a tutor",
+    "sendEscalation": "Send",
+    "waiting": "A tutor will answer here. It may take until morning.",
+    "queued": "Saved on this phone. It will send when you are online.",
+    "topicBlocked": "I can’t help with medical, legal, or immigration advice. You can talk to a person instead.",
+    "tutor": "Tutor"
   }
 }
