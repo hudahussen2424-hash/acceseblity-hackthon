@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -100,7 +100,11 @@ def indexed_sections() -> list[dict[str, Any]]:
 
 
 @app.post("/api/v1/content")
-def index_content(payload: Any) -> dict[str, int]:
+async def index_content(request: Request) -> dict[str, int]:
+    try:
+        payload = await request.json()
+    except ValueError:
+        plain_bad("Send valid JSON course content.")
     sections = payload.get("sections") if isinstance(payload, dict) else payload
     if not isinstance(sections, list) or len(sections) > 5000:
         plain_bad("Send a list of up to 5000 course sections.")
@@ -112,7 +116,7 @@ def index_content(payload: Any) -> dict[str, int]:
         title, url, text = section.get("title"), section.get("url", ""), section.get("text")
         if not isinstance(section_id, str) or not section_id.strip():
             plain_bad("Each course section needs an id.")
-        if not isinstance(title, str) or not title.strip() or not isinstance(url, str):
+        if not isinstance(title, str) or not title.strip() or not isinstance(url, str) or not url.strip():
             plain_bad("Each course section needs a title and a text URL.")
         if not isinstance(text, (str, dict)):
             plain_bad("Each course section needs text.")

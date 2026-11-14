@@ -22,6 +22,14 @@ export const STOP_WORDS = new Set([
   "won't", "would", "you", "your", "yours", "yourself", "yourselves"
 ]);
 
+export const AMHARIC_TITLES = {
+  "what-is-shaping-the-future-of-va-work": "የቨርቹዋል አሲስታንት ሥራን ወደፊት ምን እየቀየረው ነው",
+  "artificial-intelligence-and-the-future-of-va-work": "አርቴፊሻል ኢንተለጀንስ እና የቨርቹዋል አሲስታንት ሥራ ወደፊት",
+  "what-clients-are-likely-to-value-more-and-more": "ቀጣሪዎች ወደፊት ይበልጥ ትኩረት የሚሰጡባቸው ነገሮች",
+  "what-this-means-for-aspiring-virtual-assistants": "ይህ ለአዳዲስ ቨርቹዋል አሲስታንቶች ምን ትርጉም አለው",
+  "so-is-the-future-of-va-promising": "ታዲያ የቨርቹዋል አሲስታንት ሥራ የወደፊት ተስፋው ጥሩ ነው"
+};
+
 const ETHIOPIC_PUNCT_REGEX = /[፡።፣፤፥፦፧፨]/g;
 const GENERAL_PUNCT_REGEX = /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/g;
 const ETHIOPIC_CHAR_REGEX = /[\u1200-\u137F]/;
@@ -70,7 +78,7 @@ export function tokenize(text, lang = "en") {
           tokens.push(word.slice(i, i + 3));
         }
       } else {
-        // Fallback for non-Ethiopic loan words/acronyms (e.g. "VA", "AI")
+        // Non-Ethiopic words/acronyms (e.g. "VA", "AI")
         const lower = word.toLowerCase();
         if (!STOP_WORDS.has(lower) && lower.length > 1) {
           tokens.push(lower);
@@ -98,7 +106,19 @@ export function tokenize(text, lang = "en") {
 export function scoreSection(queryTokens, section, lang = "en") {
   if (!queryTokens || queryTokens.length === 0 || !section) return 0;
 
-  const titleText = section.title || "";
+  let titleText = "";
+  if (lang === "am") {
+    if (typeof section.title === "object" && section.title?.am) {
+      titleText = section.title.am;
+    } else if (section.id && AMHARIC_TITLES[section.id]) {
+      titleText = AMHARIC_TITLES[section.id];
+    } else {
+      titleText = section.title || "";
+    }
+  } else {
+    titleText = typeof section.title === "object" ? (section.title?.en || "") : (section.title || "");
+  }
+
   let bodyText = "";
   if (section.text) {
     bodyText = typeof section.text === "string" ? section.text : (section.text[lang] || section.text.en || "");
@@ -168,7 +188,7 @@ export function search(question, sections = [], lang = "en") {
 }
 
 if (typeof globalThis !== "undefined") {
-  globalThis.DbSearch = { search, THRESHOLD, tokenize, stripPunctuation, scoreSection, STOP_WORDS };
+  globalThis.DbSearch = { search, THRESHOLD, tokenize, stripPunctuation, scoreSection, STOP_WORDS, AMHARIC_TITLES };
 }
 
 export default search;

@@ -6,19 +6,15 @@
     "dialogTitle": "Learning assistant",
     "close": "Close",
     "greeting": "Ask a question about this lesson. The answer comes from the lesson text.",
-    "questionLabel": "Your question, required",
+    "questionLabel": "Your question",
     "questionPlaceholder": "Ask about this lesson",
-    "ask": "Ask",
-    "errorEmpty": "Enter a question.",
+    "ask": "Send",
+    "errorEmpty": "Enter a question before sending.",
     "person": "Talk to a person",
     "language": "Language",
     "you": "You",
-    "escalationNote": "Optional note",
-    "consent": "Share this conversation with a tutor",
-    "sendEscalation": "Send",
-    "waiting": "A tutor will answer here. It may take until morning.",
-    "queued": "Saved on this phone. It will send when you are online.",
-    "topicBlocked": "I can’t help with medical, legal, or immigration advice. You can talk to a person instead.",
-    "tutor": "Tutor"
+    "assistant": "Assistant",
+    "notFound": "I could not find this in the course",
+    "readInCourse": "Read in the course"
   }
 }
