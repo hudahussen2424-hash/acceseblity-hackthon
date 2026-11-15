@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const python = process.env.PYTHON || "python3";
+const python = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
 
 export default defineConfig({
   testDir: "./tests/e2e",

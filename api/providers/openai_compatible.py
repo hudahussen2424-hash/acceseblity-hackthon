@@ -6,10 +6,11 @@ import urllib.request
 
 
 SYSTEM_PROMPT = (
-    "Answer only from the provided sections, in the learner's language ({language}). "
-    "Every factual claim must be supported by at least one section. Return only a JSON object "
-    "with keys text and source_ids; source_ids must contain the exact IDs of the sections "
-    "supporting the answer. If the sections do not answer the question, return "
+    "Answer only by selecting an exact verbatim excerpt from a provided section, in the "
+    "learner's language ({language}). Do not paraphrase or add facts. The text must be copied "
+    "exactly from the section, including punctuation. Return only a JSON object with keys text "
+    "and source_ids; source_ids must contain the exact IDs of the sections containing the "
+    "excerpt. If no excerpt answers the question, return "
     '{"text":"NOT_FOUND","source_ids":[]}. Do not give medical, legal or immigration advice. '
     "Keep text under 120 words and use plain language."
 )

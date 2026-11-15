@@ -22,21 +22,6 @@
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 1rem; background: #e5eef7; color: #123e67; font-weight: 700; font-size: .85rem; }
     :focus-visible { outline: 3px solid #b04a00; outline-offset: 3px; }
   </style>
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@graph": [
-      {"@type":"JobPosting","title":"Inbox Support Assistant (TEST)","description":"Practice sorting a sample inbox, flagging urgent messages, and drafting short replies for review.","datePosted":"2026-11-14","employmentType":"PART_TIME","url":"https://savanna.example.test/savanna/pages/jobs.html#test-inbox-support","jobLocationType":"TELECOMMUTE","hiringOrganization":{"@type":"Organization","name":"Test Studio 01"},"jobLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"Nairobi","addressCountry":"KE"}},"jobBenefits":["interpreter for interviews","flexible hours"]},
-      {"@type":"JobPosting","title":"Spreadsheet Helper (TEST)","description":"Clean a practice spreadsheet by checking dates, removing duplicate sample rows, and labeling columns.","datePosted":"2026-11-14","employmentType":"CONTRACTOR","url":"https://savanna.example.test/savanna/pages/jobs.html#test-spreadsheet-helper","hiringOrganization":{"@type":"Organization","name":"Test Workshop 02"},"jobLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"Addis Ababa","addressCountry":"ET"}},"jobBenefits":["screen reader friendly tools","flexible hours"]},
-      {"@type":"JobPosting","title":"Calendar Coordinator (TEST)","description":"Organize a sample weekly calendar and prepare clear meeting reminders using a practice schedule.","datePosted":"2026-11-14","employmentType":"PART_TIME","url":"https://savanna.example.test/savanna/pages/jobs.html#test-calendar-coordinator","jobLocationType":"TELECOMMUTE","hiringOrganization":{"@type":"Organization","name":"Practice Office 03"},"jobLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"Kampala","addressCountry":"UG"}},"jobBenefits":["interpreter for interviews","extra time for interview tasks"]},
-      {"@type":"JobPosting","title":"Customer Reply Assistant (TEST)","description":"Sort example customer questions and write polite draft replies from a short information sheet.","datePosted":"2026-11-14","employmentType":"CONTRACTOR","url":"https://savanna.example.test/savanna/pages/jobs.html#test-customer-replies","jobLocationType":"TELECOMMUTE","hiringOrganization":{"@type":"Organization","name":"Sample Service Group 04"},"jobLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"Dar es Salaam","addressCountry":"TZ"}},"jobBenefits":["screen reader friendly tools","interpreter for interviews"]},
-      {"@type":"JobPosting","title":"Research Organizer (TEST)","description":"Put supplied public practice links into a table and summarize each source in one plain sentence.","datePosted":"2026-11-14","employmentType":"PART_TIME","url":"https://savanna.example.test/savanna/pages/jobs.html#test-research-organizer","hiringOrganization":{"@type":"Organization","name":"Training Desk 05"},"jobLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"Kigali","addressCountry":"RW"}},"jobBenefits":["flexible hours","written interview questions"]},
-      {"@type":"JobPosting","title":"Content Checker (TEST)","description":"Review sample web copy for missing headings, unclear sentences, and simple spelling mistakes.","datePosted":"2026-11-14","employmentType":"CONTRACTOR","url":"https://savanna.example.test/savanna/pages/jobs.html#test-content-checker","jobLocationType":"TELECOMMUTE","hiringOrganization":{"@type":"Organization","name":"Learning Sandbox 06"},"jobLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"Mombasa","addressCountry":"KE"}},"jobBenefits":["screen reader friendly tools","extra time for interview tasks"]},
-      {"@type":"JobPosting","title":"Project Notes Assistant (TEST)","description":"Turn a practice meeting transcript into a short list of decisions, tasks, and due dates.","datePosted":"2026-11-14","employmentType":"PART_TIME","url":"https://savanna.example.test/savanna/pages/jobs.html#test-project-notes","hiringOrganization":{"@type":"Organization","name":"Demo Project Room 07"},"jobLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"Arusha","addressCountry":"TZ"}},"jobBenefits":["interpreter for interviews","flexible hours","written interview questions"]},
-      {"@type":"JobPosting","title":"Digital File Organizer (TEST)","description":"Arrange a set of practice documents into named folders and write a clear index for the sample files.","datePosted":"2026-11-14","employmentType":"CONTRACTOR","url":"https://savanna.example.test/savanna/pages/jobs.html#test-file-organizer","jobLocationType":"TELECOMMUTE","hiringOrganization":{"@type":"Organization","name":"Example Skills Lab 08"},"jobLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"East Africa","addressCountry":"KE"}},"jobBenefits":["screen reader friendly tools","flexible hours"]}
-    ]
-  }
-  </script>
 </head>
 <body>
   <header class="nav-header">
@@ -59,6 +44,24 @@
         const response = await fetch("../../demo/data/jobs.json");
         if (!response.ok) throw new Error("Jobs could not be loaded.");
         const jobs = await response.json();
+        if (!Array.isArray(jobs)) throw new Error("Jobs data must be a list.");
+        const structuredData = document.createElement("script");
+        structuredData.type = "application/ld+json";
+        structuredData.textContent = JSON.stringify({
+          "@context": "https://schema.org",
+          "@graph": jobs.map((job) => ({
+            "@type": "JobPosting",
+            identifier: { "@type": "PropertyValue", name: job.employer, value: job.id },
+            title: job.title,
+            description: job.description,
+            url: new URL(job.url, window.location.href).href,
+            hiringOrganization: { "@type": "Organization", name: job.employer },
+            jobLocation: { "@type": "Place", name: job.location },
+            ...(job.remote ? { jobLocationType: "TELECOMMUTE" } : {}),
+            ...(Array.isArray(job.accommodations) ? { jobBenefits: job.accommodations } : {})
+          }))
+        });
+        document.head.append(structuredData);
         for (const job of jobs) {
           const article = document.createElement("article"); article.className = "job-card"; article.id = job.id;
           const title = document.createElement("h2"); title.textContent = job.title; article.append(title);

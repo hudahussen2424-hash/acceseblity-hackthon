@@ -34,7 +34,7 @@ def tokenize(text: str, language: str = "en") -> list[str]:
     cleaned = re.sub(r"\[CHECK\]", " ", cleaned, flags=re.IGNORECASE)
     cleaned = GENERAL_PUNCT.sub(" ", cleaned)
     words = re.sub(r"\s+", " ", cleaned).strip().split()
-    if language == "am":
+    if language in {"am", "ti"}:
         tokens: list[str] = []
         for word in words:
             if ETHIOPIC.search(word):
@@ -45,11 +45,19 @@ def tokenize(text: str, language: str = "en") -> list[str]:
                 if lower not in STOP_WORDS and len(lower) > 1:
                     tokens.append(lower)
         return tokens
+    if language != "en":
+        return [word.lower() for word in words if len(word) > 1]
     filtered = [word.lower() for word in words if word.lower() not in STOP_WORDS and len(word) > 1]
     return filtered if filtered else [word.lower() for word in words]
 
 
 def _title(section: dict, language: str) -> str:
+    titles = section.get("titles")
+    if isinstance(titles, dict) and isinstance(titles.get(language), str) and titles[language]:
+        return titles[language]
+    translation = section.get("translations", {}).get(language) if isinstance(section.get("translations"), dict) else None
+    if isinstance(translation, dict) and isinstance(translation.get("title"), str) and translation["title"]:
+        return translation["title"]
     title = section.get("title", "")
     if language == "am":
         if isinstance(title, dict) and title.get("am"):
@@ -57,13 +65,22 @@ def _title(section: dict, language: str) -> str:
         if section.get("id") in AMHARIC_TITLES:
             return AMHARIC_TITLES[section["id"]]
         return str(title) if not isinstance(title, dict) else ""
+    if language == "en":
+        return str(title.get("en", "") if isinstance(title, dict) else title)
+    if language in {"ti", "om", "so"}:
+        return ""
     return str(title.get("en", "") if isinstance(title, dict) else title)
 
 
 def _body(section: dict, language: str) -> str:
     text = section.get("text", "")
     if isinstance(text, dict):
-        return str(text.get(language) or text.get("en") or "")
+        localized = text.get(language)
+        if isinstance(localized, str) and localized:
+            return localized
+        if language in {"ti", "om", "so"}:
+            return ""
+        return str(text.get("en") or "")
     return str(text) if isinstance(text, str) else ""
 
 
@@ -108,6 +125,6 @@ def sensitive_topic(question: str, topics_path: Path | None = None) -> bool:
     folded = question.casefold()
     return any(
         isinstance(word, str) and word and word.casefold() in folded
-        for language in ("en", "am")
+        for language in topics
         for word in topics.get(language, [])
     )

@@ -148,6 +148,8 @@ describe("English Search Tests", () => {
       assert.strictEqual(res.best.section.id, tc.expectedId);
       assert.ok(res.best.score >= THRESHOLD);
       assert.ok(res.best.score <= 1.0);
+      assert.ok(typeof res.best.section.url === "string" && res.best.section.url.length > 0, "best section must include its source link url");
+      assert.ok(Boolean(res.best.section.title), "best section must include its title");
     });
   }
 
@@ -226,6 +228,8 @@ describe("Amharic Search Tests", () => {
       assert.strictEqual(res.best.section.id, tc.expectedId);
       assert.ok(res.best.score >= THRESHOLD);
       assert.ok(res.best.score <= 1.0);
+      assert.ok(typeof res.best.section.url === "string" && res.best.section.url.length > 0, "best section must include its source link url");
+      assert.ok(Boolean(res.best.section.title), "best section must include its title");
     });
   }
 
@@ -261,4 +265,26 @@ describe("Job source search tests", () => {
     assert.ok(matches.length > 0);
     assert.ok(matches.every(({ section }) => section.remote && section.url));
   });
+});
+
+describe("Additional language packs and retrieval", () => {
+  const languages = ["am", "ti", "om", "so"];
+  const englishStrings = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../module/i18n/en.json"), "utf-8")).strings;
+
+  for (const language of languages) {
+    it(`${language} locale is complete and every course section has localized text, title, and stable source`, () => {
+      const pack = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../module/i18n/${language}.json`), "utf-8"));
+      assert.equal(pack.lang, language);
+      assert.equal(pack.dir, "ltr");
+      assert.deepEqual(Object.keys(pack.strings).sort(), Object.keys(englishStrings).sort());
+      assert.ok(Object.values(pack.strings).every((value) => typeof value === "string" && value.trim()));
+      for (const section of sections) {
+        assert.ok(section.titles[language], `${section.id} needs a ${language} title`);
+        assert.ok(section.text[language], `${section.id} needs ${language} course text`);
+        const result = search(section.titles[language], sections, language);
+        assert.equal(result.best?.section.id, section.id);
+        assert.equal(result.best?.section.url, section.url);
+      }
+    });
+  }
 });

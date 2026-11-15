@@ -226,7 +226,7 @@ def _person_reply(chat_id: int, language: str, username: str | None) -> str:
     note = f"Telegram chat ID: {chat_id}"
     try:
         ticket_id = save_escalation_record(chat_history(chat_id), language, page, note)
-        notify_webhook(ticket_id, {"page": page})
+        notify_webhook(ticket_id)
     except (OSError, sqlite3.Error) as error:
         logger.error("Could not create Telegram escalation: %s", error)
         return (
@@ -234,11 +234,35 @@ def _person_reply(chat_id: int, language: str, username: str | None) -> str:
             if language == "en"
             else "አሁን ጥያቄዎን መመዝገብ አልቻልኩም። እባክዎ እንደገና ይሞክሩ።"
         )
+    reference = ticket_id.replace("-", "")[-8:].upper()
     return (
-        "Your request is with a tutor. It may take until morning to reply."
+        f"Your request is queued. Tutors may be unavailable, including at 23:00; response times vary and are not guaranteed. Use /status {reference} to check."
         if language == "en"
-        else "ጥያቄዎ ለአስተማሪ ተልኳል። መልሱ እስከ ጠዋት ሊወስድ ይችላል።"
+        else f"ጥያቄዎ ተመዝግቧል። አስተማሪዎች በ23:00 ላይም ላይገኙ ይችላሉ፤ የምላሽ ጊዜ ይለያያል እና ዋስትና የለውም። /status {reference} ብለው ይፈትሹ።"
     )
+
+
+def _ticket_status(chat_id: int, reference: str, language: str) -> str:
+    if not re.fullmatch(r"[A-F0-9]{8}", reference):
+        return "Use /status followed by the 8-character code from your tutor request."
+    with api_main.connect() as db:
+        api_main.purge_expired_tickets(db)
+        rows = db.execute(
+            "SELECT id, reply, status FROM escalations WHERE id LIKE ? AND note=?",
+            (f"%{reference.lower()}", f"Telegram chat ID: {chat_id}"),
+        ).fetchall()
+    if len(rows) != 1:
+        return "No matching tutor request was found. Check the code and use this Telegram chat."
+    ticket = rows[0]
+    if ticket["status"] == "answered":
+        return f"Tutor: {ticket['reply'] or ''}"
+    if ticket["reply"]:
+        update = f"Tutor update: {ticket['reply']}"
+    elif language == "am":
+        update = "እስካሁን መልስ የለም። የምላሽ ጊዜ ይለያያል፤ ዋስትና የለውም።"
+    else:
+        update = "No tutor reply yet. Response times vary and are not guaranteed."
+    return f"{update}\nCheck again with /status {reference}."
 
 
 def handle_text(chat_id: int, text: str, username: str | None = None) -> str:
@@ -264,6 +288,10 @@ def handle_text(chat_id: int, text: str, username: str | None = None) -> str:
             )
         if command == "/person":
             return _person_reply(chat_id, language, username)
+        if command == "/status":
+            if len(args) != 1:
+                return "Use /status followed by the 8-character code from your tutor request."
+            return _ticket_status(chat_id, args[0].upper(), language)
         if command == "/jobs":
             return jobs_reply()
         if command == "/alerts":

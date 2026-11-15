@@ -1,15 +1,29 @@
 import asyncio
 import pytest
 
-from api.qa import SENSITIVE_REFUSAL, answer_question
+from api.qa import NOT_FOUND_TRANSLATIONS, SENSITIVE_REFUSAL, SENSITIVE_REFUSAL_TRANSLATIONS, answer_question
 
 
-SECTIONS = [{
-    "id": "ai-va", "title": "Artificial intelligence for virtual assistants",
-    "url": "/lesson#ai-va",
-    "text": {"en": "Artificial intelligence can automate email drafting and spreadsheet organization for virtual assistants.",
-             "am": "TODO: Translate to Amharic"},
-}]
+SECTIONS = [
+    {
+        "id": "ai-va",
+        "title": "Artificial intelligence for virtual assistants",
+        "url": "/lesson#ai-va",
+        "text": {
+            "en": "Artificial intelligence can automate email drafting and spreadsheet organization for virtual assistants.",
+            "am": "አርቴፊሻል ኢንተለጀንስ የኢሜይል ረቂቅ እና የስፕሬድሺት አደረጃጀት ለቨርቹዋል አሲስታንቶች ያከናውናል።",
+        },
+    },
+    {
+        "id": "future-va",
+        "title": "Future of VA Work",
+        "url": "/lesson#future-va",
+        "text": {
+            "en": "The future of virtual assistant work involves strong collaboration and remote tools.",
+            "am": "የቨርቹዋል አሲስታንት ሥራ የወደፊት ተስፋ የትብብር መሣሪያዎችን ያካትታል።",
+        },
+    },
+]
 
 
 class FakeProvider:
@@ -32,6 +46,7 @@ def test_below_threshold_does_not_call_provider(monkeypatch):
     assert provider.calls == 0
     assert result["mode"] == "search"
     assert result["answer"] == "I could not find this in the course."
+    assert result["sources"] == []
 
 
 def test_provider_failure_falls_back_to_best_section(monkeypatch):
@@ -46,10 +61,11 @@ def test_provider_failure_falls_back_to_best_section(monkeypatch):
 
 def test_provider_answer_only_returns_its_validated_citation(monkeypatch):
     monkeypatch.setenv("THRESHOLD", "0.1")
-    provider = FakeProvider({"text": "AI can help organize spreadsheets.", "source_ids": ["ai-va"]})
+    excerpt = "Artificial intelligence can automate email drafting and spreadsheet organization for virtual assistants."
+    provider = FakeProvider({"text": excerpt, "source_ids": ["ai-va"]})
     result = asyncio.run(answer_question("How does artificial intelligence help virtual assistants?", "en", SECTIONS, provider))
     assert result["mode"] == "ai"
-    assert result["answer"] == "AI can help organize spreadsheets."
+    assert result["answer"] == excerpt
     assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
 
 
@@ -61,6 +77,46 @@ def test_uncited_or_unknown_provider_sources_fall_back_to_retrieval(monkeypatch,
     assert result["mode"] == "search"
     assert "automate email drafting" in result["answer"]
     assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
+
+
+def test_unsubstantiated_provider_claim_falls_back_to_best_section(monkeypatch):
+    monkeypatch.setenv("THRESHOLD", "0.1")
+    # Provider returns a claim with an allowed source_id, but the claim is completely unsubstantiated by the section text
+    provider = FakeProvider({"text": "Astronauts travel to Mars in nuclear rocket ships.", "source_ids": ["ai-va"]})
+    result = asyncio.run(answer_question("How does artificial intelligence help virtual assistants?", "en", SECTIONS, provider))
+    assert result["mode"] == "search"
+    assert "automate email drafting" in result["answer"]
+    assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
+
+
+def test_provider_near_match_with_unsupported_claim_falls_back(monkeypatch):
+    monkeypatch.setenv("THRESHOLD", "0.1")
+    # Token overlap alone must not validate a generated factual change.
+    unsupported_answer = "Artificial intelligence can automate email drafting and spreadsheet deletion for virtual assistants."
+    provider = FakeProvider({"text": unsupported_answer, "source_ids": ["ai-va"]})
+    result = asyncio.run(answer_question("How does artificial intelligence help virtual assistants?", "en", SECTIONS, provider))
+    assert result["mode"] == "search"
+    assert "spreadsheet organization" in result["answer"]
+    assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
+
+
+def test_amharic_retrieval_returns_best_section_with_amharic_text_and_link(monkeypatch):
+    monkeypatch.setenv("THRESHOLD", "0.1")
+    provider = FakeProvider(error=RuntimeError("no ai"))
+    result = asyncio.run(answer_question("አርቴፊሻል ኢንተለጀንስ የሰዎችን ሥራ ይተካል?", "am", SECTIONS, provider))
+    assert result["mode"] == "search"
+    assert "አርቴፊሻል ኢንተለጀንስ" in result["answer"]
+    assert len(result["sources"]) == 1
+    assert result["sources"][0]["url"] == "/lesson#ai-va"
+
+
+def test_retrieval_only_returns_single_best_section_link(monkeypatch):
+    monkeypatch.setenv("THRESHOLD", "0.05")
+    # Both sections score above threshold, but answer must return only the best section link
+    result = asyncio.run(answer_question("virtual assistant work and artificial intelligence", "en", SECTIONS))
+    assert result["mode"] == "search"
+    assert len(result["sources"]) == 1
+    assert result["sources"][0]["url"] in ("/lesson#ai-va", "/lesson#future-va")
 
 
 def test_no_match_and_sensitive_answers_have_no_unrelated_sources(monkeypatch):
@@ -81,5 +137,32 @@ def test_sensitive_topic_is_refused_without_provider_call(question, language):
     provider = FakeProvider({"text": "unsafe generated answer"})
     result = asyncio.run(answer_question(question, language, SECTIONS, provider))
     assert provider.calls == 0
-    assert result["answer"] == SENSITIVE_REFUSAL
+    expected = SENSITIVE_REFUSAL_TRANSLATIONS.get(language, SENSITIVE_REFUSAL)
+    assert result["answer"] == expected
     assert result["mode"] == "search"
+    assert result["sources"] == []
+
+
+@pytest.mark.parametrize("language", ["ti", "om", "so"])
+def test_new_languages_return_localized_no_match_without_provider_fallback(language):
+    provider = FakeProvider({"text": "English fallback", "source_ids": []})
+    result = asyncio.run(answer_question("x", language, [], provider))
+
+    assert result["answer"] == NOT_FOUND_TRANSLATIONS[language]
+    assert result["answer"] != "I could not find this in the course."
+    assert provider.calls == 0
+    assert result["sources"] == []
+
+
+@pytest.mark.parametrize(("question", "language"), [
+    ("Gorsa fayyaa naaf kenni", "om"),
+    ("Talo caafimaad i sii", "so"),
+    ("ምኽሪ ሕጊ ሃበኒ", "ti"),
+])
+def test_new_languages_use_localized_sensitive_topic_refusal(question, language):
+    provider = FakeProvider({"text": "unsafe generated answer"})
+    result = asyncio.run(answer_question(question, language, SECTIONS, provider))
+
+    assert provider.calls == 0
+    assert result["answer"] == SENSITIVE_REFUSAL_TRANSLATIONS[language]
+    assert result["sources"] == []

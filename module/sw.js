@@ -1,17 +1,22 @@
 /* Scope-safe, versioned offline cache for the assistant's static sources. */
-const CACHE_NAME = "db-assistant-static-v1";
+const CACHE_NAME = "db-assistant-static-v3";
 const APP_ROOT = new URL("./", self.registration.scope);
 const MODULE_ROOT = new URL("module/", APP_ROOT);
 const STATIC_ASSETS = [
+  APP_ROOT,
+  new URL("index.html", APP_ROOT),
   new URL("db-assistant.js", MODULE_ROOT),
   new URL("search.js", MODULE_ROOT),
   new URL("i18n/en.json", MODULE_ROOT),
   new URL("i18n/am.json", MODULE_ROOT),
   new URL("i18n/om.json", MODULE_ROOT),
+  new URL("i18n/ti.json", MODULE_ROOT),
+  new URL("i18n/so.json", MODULE_ROOT),
   new URL("i18n/ar.json", MODULE_ROOT),
   new URL("demo/data/content.json", APP_ROOT),
   new URL("demo/data/jobs.json", APP_ROOT),
-  new URL("demo/blank.html", APP_ROOT)
+  new URL("demo/blank.html", APP_ROOT),
+  new URL("savanna/pages/concept-with-navigation.html", APP_ROOT)
 ];
 
 self.addEventListener("install", (event) => {
@@ -52,7 +57,12 @@ self.addEventListener("fetch", (event) => {
     }
     try {
       const response = await fetch(request);
-      if (response.ok && (url.pathname.includes("/module/") || url.pathname.includes("/demo/data/content.json"))) {
+      if (response.ok && (
+        url.pathname.includes("/module/")
+        || url.pathname.includes("/demo/data/content.json")
+        || url.pathname === new URL("index.html", APP_ROOT).pathname
+        || url.pathname === new URL("savanna/pages/concept-with-navigation.html", APP_ROOT).pathname
+      )) {
         await cache.put(request, response.clone());
       }
       return response;

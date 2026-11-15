@@ -4,9 +4,11 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import sqlite3
 import urllib.parse
 import urllib.request
@@ -97,6 +99,7 @@ SECTION_SHORT_CODES = {
 }
 
 JOBS_FILE = ROOT.parent / "demo" / "data" / "jobs.json"
+DEFAULT_COURSE_BASE_URL = "https://github.com/hudahussen2424-hash/acceseblity-hackthon/blob/main/"
 
 
 def get_job_titles(lang: str = "en", limit: int = 3) -> list[str]:
@@ -155,6 +158,15 @@ def sms_cipher():
         return None
 
 
+def sms_alert_delivery_configured() -> bool:
+    return bool(
+        os.getenv("TWILIO_ACCOUNT_SID", "").strip()
+        and os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+        and os.getenv("TWILIO_FROM_NUMBER", "").strip()
+        and sms_cipher()
+    )
+
+
 def encrypt_sms_phone(phone: str) -> str | None:
     cipher = sms_cipher()
     return cipher.encrypt(phone.encode("utf-8")).decode("ascii") if cipher else None
@@ -191,29 +203,71 @@ def get_source_short_code(source: dict[str, Any], sections: list[dict[str, Any]]
     return "Course s1"
 
 
-def format_sms_message(body: str, source_code: str | None = None) -> str:
+def format_sms_message(
+    body: str,
+    source_code: str | None = None,
+    *,
+    source_url: str | None = None,
+    suffix: str | None = None,
+) -> str:
     body = re.sub(r"\s+", " ", body).strip()
-    suffix = f" ({source_code})" if source_code else ""
-    budget = 160 - len(suffix)
-    if budget <= 0:
-        return (body + suffix)[:160]
-
-    if len(body) <= budget:
+    suffix_parts = []
+    if source_code:
+        suffix_parts.append(f"({source_code})")
+    if source_url:
+        suffix_parts.append(source_url)
+    if suffix:
+        suffix_parts.append(suffix)
+    suffix = f" {' '.join(suffix_parts)}" if suffix_parts else ""
+    budget_units = _sms_limit(body + suffix) - _sms_units(suffix)
+    if _sms_units(body) <= budget_units:
         return f"{body}{suffix}"
+    if budget_units <= 0:
+        return suffix[:160]
 
-    truncated = body[:budget].rstrip()
+    truncated = ""
+    units = 0
+    for character in body:
+        character_units = _sms_units(character)
+        if units + character_units > budget_units:
+            break
+        truncated += character
+        units += character_units
     last_space = truncated.rfind(" ")
     if last_space > 0:
         truncated = truncated[:last_space].rstrip()
-
-    if len(truncated) + 3 <= budget:
-        truncated = f"{truncated}..."
-
-    result = f"{truncated}{suffix}"
-    return result[:160]
+    if _sms_units(truncated + "..." + suffix) <= _sms_limit(body + suffix):
+        truncated += "..."
+    return f"{truncated}{suffix}"
 
 
-def send_sms_job_alerts(body: str) -> dict[str, int]:
+def absolute_course_url(url: str) -> str:
+    if urllib.parse.urlsplit(url).scheme in {"http", "https"}:
+        return url
+    base_url = os.getenv("COURSE_BASE_URL", DEFAULT_COURSE_BASE_URL)
+    return urllib.parse.urljoin(base_url.rstrip("/") + "/", url.lstrip("/"))
+
+
+_GSM7_BASIC = set(
+    "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ"
+    " !\"#¤%&'()*+,-./0123456789:;<=>?¡"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿"
+    "abcdefghijklmnopqrstuvwxyzäöñüà"
+)
+_GSM7_EXTENSION = set("^{}\\[~]|€\f")
+
+
+def _sms_units(text: str) -> int:
+    if all(character in _GSM7_BASIC or character in _GSM7_EXTENSION for character in text):
+        return sum(2 if character in _GSM7_EXTENSION else 1 for character in text)
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _sms_limit(text: str) -> int:
+    return 160 if all(character in _GSM7_BASIC or character in _GSM7_EXTENSION for character in text) else 70
+
+
+def send_sms_job_alerts(body: str, source_url: str | None = None) -> dict[str, int]:
     sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
     from_number = os.getenv("TWILIO_FROM_NUMBER", "").strip()
@@ -231,7 +285,11 @@ def send_sms_job_alerts(body: str) -> dict[str, int]:
         if not phone:
             skipped += 1
             continue
-        data = urllib.parse.urlencode({"To": phone, "From": from_number, "Body": format_sms_message(body)}).encode("utf-8")
+        formatted = format_sms_message(
+            body,
+            source_url=absolute_course_url(source_url) if source_url else None,
+        )
+        data = urllib.parse.urlencode({"To": phone, "From": from_number, "Body": formatted}).encode("utf-8")
         request = urllib.request.Request(url, data=data, headers={"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"}, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=8) as response:
@@ -244,10 +302,38 @@ def send_sms_job_alerts(body: str) -> dict[str, int]:
     return {"sent": sent, "failed": failed, "skipped": skipped}
 
 
+class _ClosingConnection(sqlite3.Connection):
+    """Make ``with connect()`` release SQLite file handles on Windows too."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def connect() -> sqlite3.Connection:
-    db = sqlite3.connect(DB_PATH)
+    db = sqlite3.connect(DB_PATH, factory=_ClosingConnection)
     db.row_factory = sqlite3.Row
     return db
+
+
+def purge_expired_tickets(db: sqlite3.Connection) -> None:
+    try:
+        retention_days = int(os.getenv("TICKET_RETENTION_DAYS", "90"))
+    except ValueError as exc:
+        raise ValueError("TICKET_RETENTION_DAYS must be a non-negative integer.") from exc
+    if retention_days < 0:
+        raise ValueError("TICKET_RETENTION_DAYS must be a non-negative integer.")
+    if retention_days == 0:
+        return
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    db.execute(
+        "DELETE FROM escalation_signals WHERE ticket_id IN "
+        "(SELECT id FROM escalations WHERE created_at < ?)",
+        (cutoff,),
+    )
+    db.execute("DELETE FROM escalations WHERE created_at < ?", (cutoff,))
 
 
 def initialize() -> None:
@@ -268,6 +354,7 @@ def initialize() -> None:
             ("accommodation", "TEXT"),
             ("screen_context_json", "TEXT"),
             ("phone", "TEXT"),
+            ("access_token_hash", "TEXT"),
         ):
             if column not in columns:
                 db.execute(f"ALTER TABLE escalations ADD COLUMN {column} {definition}")
@@ -275,6 +362,7 @@ def initialize() -> None:
             ticket_id TEXT NOT NULL, signal_type TEXT NOT NULL, sdp TEXT NOT NULL,
             created_at TEXT NOT NULL, PRIMARY KEY(ticket_id, signal_type)
         )""")
+        purge_expired_tickets(db)
         signal_expiry = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
         db.execute("DELETE FROM escalation_signals WHERE created_at < ?", (signal_expiry,))
         db.execute("""CREATE TABLE IF NOT EXISTS content_sections (
@@ -304,17 +392,56 @@ def initialize() -> None:
                     ("3", "Customer Support VA", "የደንበኞች አገልግሎት ረዳት"),
                 ],
             )
-        count = db.execute("SELECT COUNT(*) FROM content_sections").fetchone()[0]
         seed_file = ROOT.parent / "demo" / "data" / "content.json"
-        if count == 0 and seed_file.exists():
+        if seed_file.exists():
             try:
                 sections = json.loads(seed_file.read_text(encoding="utf-8"))
                 if isinstance(sections, list):
-                    db.executemany(
-                        "INSERT OR REPLACE INTO content_sections(id,section_json) VALUES(?,?)",
-                        [(str(section.get("id", uuid4())), json.dumps(section, ensure_ascii=False))
-                         for section in sections if isinstance(section, dict)],
-                    )
+                    for section in sections:
+                        if not isinstance(section, dict):
+                            continue
+                        section_id = str(section.get("id", uuid4()))
+                        stored = db.execute(
+                            "SELECT section_json FROM content_sections WHERE id=?",
+                            (section_id,),
+                        ).fetchone()
+                        if stored is None or "[CHECK]" in stored["section_json"]:
+                            db.execute(
+                                "INSERT OR REPLACE INTO content_sections(id,section_json) VALUES(?,?)",
+                                (section_id, json.dumps(section, ensure_ascii=False)),
+                            )
+                        else:
+                            try:
+                                current = json.loads(stored["section_json"])
+                            except ValueError:
+                                current = None
+                            if isinstance(current, dict):
+                                changed = False
+                                seed_text = section.get("text")
+                                current_text = current.get("text")
+                                if isinstance(seed_text, dict):
+                                    if isinstance(current_text, str):
+                                        current_text = {"en": current_text}
+                                        current["text"] = current_text
+                                        changed = True
+                                    if isinstance(current_text, dict):
+                                        for language in ("ti", "om", "so"):
+                                            if not current_text.get(language) and seed_text.get(language):
+                                                current_text[language] = seed_text[language]
+                                                changed = True
+                                seed_titles = section.get("titles")
+                                if isinstance(seed_titles, dict):
+                                    current_titles = current.setdefault("titles", {})
+                                    if isinstance(current_titles, dict):
+                                        for language in ("ti", "om", "so"):
+                                            if not current_titles.get(language) and seed_titles.get(language):
+                                                current_titles[language] = seed_titles[language]
+                                                changed = True
+                                if changed:
+                                    db.execute(
+                                        "UPDATE content_sections SET section_json=? WHERE id=?",
+                                        (json.dumps(current, ensure_ascii=False), section_id),
+                                    )
             except (OSError, ValueError):
                 pass
 
@@ -324,7 +451,9 @@ initialize()
 
 def helper_auth(token: str | None) -> None:
     expected = os.getenv("HELPER_TOKEN", "").strip()
-    if expected and token != expected:
+    if not expected:
+        raise HTTPException(status_code=503, detail="Helper access is disabled until HELPER_TOKEN is configured.")
+    if not token or not hmac.compare_digest(token, expected):
         raise HTTPException(status_code=401, detail="Enter a valid helper token.")
 
 
@@ -375,16 +504,44 @@ def indexed_sections() -> list[dict[str, Any]]:
         jobs = []
     if isinstance(jobs, list):
         known = {item.get("id") for item in sections if isinstance(item, dict)}
+        job_modes = {
+            "ti": ("ርሑቕ ስራሕ", "ኣብ ቦታ ስራሕ"),
+            "om": ("Hojii fagoo", "Bakka hojii irratti"),
+            "so": ("Shaqo fog", "Goobta shaqada"),
+        }
         for job in jobs:
             if not isinstance(job, dict) or job.get("id") in known:
                 continue
             accommodations = job.get("accommodations", [])
-            details = [job.get("description", ""), "remote work" if job.get("remote") else "on site", job.get("location", ""), *accommodations]
+            english_details = [
+                job.get("description", ""),
+                "remote work" if job.get("remote") else "on site",
+                job.get("location", ""),
+                *accommodations,
+            ]
+            titles = {"en": job.get("title", ""), "am": job.get("title", "")}
+            text = {
+                "en": ". ".join(str(value) for value in english_details if value),
+                "am": ". ".join(str(value) for value in english_details if value),
+            }
+            for language, (remote_label, on_site_label) in job_modes.items():
+                translations = job.get("translations")
+                translation = translations.get(language) if isinstance(translations, dict) else None
+                if not isinstance(translation, dict) or not translation.get("description"):
+                    continue
+                titles[language] = translation.get("title", "")
+                details = [
+                    translation["description"],
+                    remote_label if job.get("remote") else on_site_label,
+                    job.get("location", ""),
+                    *(translation.get("accommodations") or []),
+                ]
+                text[language] = ". ".join(str(value) for value in details if value)
             sections.append({
                 **job,
                 "type": "job",
-                "text": {"en": ". ".join(str(value) for value in details if value),
-                         "am": ". ".join(str(value) for value in details if value)},
+                "titles": titles,
+                "text": text,
             })
     return sections
 
@@ -396,13 +553,15 @@ def save_escalation_record(
     screen_context_json: str | None = None,
     created_at: str | None = None,
     phone: str | None = None,
+    access_token_hash: str | None = None,
 ) -> str:
     ticket_id = str(uuid4())
     created = created_at or datetime.now(timezone.utc).isoformat()
     with connect() as db:
+        purge_expired_tickets(db)
         db.execute(
-            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,screen_context_json,created_at,phone) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, ticket_type, job_id, accommodation, screen_context_json, created, phone),
+            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,screen_context_json,created_at,phone,access_token_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, ticket_type, job_id, accommodation, screen_context_json, created, phone, access_token_hash),
         )
     return ticket_id
 
@@ -453,7 +612,19 @@ async def ask(payload: dict[str, Any]) -> dict[str, Any]:
         plain_bad("Write a question of 1 to 4000 characters.")
     if language not in SUPPORTED_LANGUAGES:
         plain_bad("Language must be en, am, om, ti, so, or ar.")
-    return await answer_question(question.strip(), language, indexed_sections())
+    return await answer_question(
+        question.strip(),
+        language,
+        indexed_sections(),
+        allow_cloud=payload.get("externalAiConsent") is True,
+    )
+
+
+@app.get("/api/v1/config")
+def assistant_config() -> dict[str, bool]:
+    return {
+        "externalAiConsentRequired": os.getenv("AI_PROVIDER", "none").strip().lower() == "cloud"
+    }
 
 
 @app.post("/api/v1/jobs/notify")
@@ -467,13 +638,13 @@ def notify_job(payload: dict[str, Any], x_helper_token: str | None = Header(defa
             plain_bad(f"Job needs a {field}.")
     if not isinstance(job.get("remote"), bool):
         plain_bad("Job remote must be true or false.")
-    message = f"New test job: {job['title']} · {'Remote' if job['remote'] else 'On site'} · {job['location']} · {job['url']}"
+    message = f"New: {job['title']} | {'Remote' if job['remote'] else 'On site'} | {job['location']}"
     try:
         from . import telegram_bot
         telegram = telegram_bot.notify_job_subscribers(job)
     except Exception:
         telegram = {"sent": 0, "failed": 1}
-    sms = send_sms_job_alerts(message)
+    sms = send_sms_job_alerts(message, source_url=job["url"])
     return {"telegram": telegram, "sms": sms}
 
 
@@ -502,19 +673,58 @@ async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTex
 
     # Command: PERSON opens an escalation
     if cmd == "PERSON":
+        if not phone_hash:
+            return PlainTextResponse("A sender number is needed to check a tutor request.", media_type="text/plain")
         ticket_id = save_escalation_record(
             conversation=[{"from": "user", "text": "PERSON"}],
             language=lang,
-            page=f"sms:{phone_hash}" if phone_hash else "sms",
-            note=f"SMS escalation from {phone_hash}" if phone_hash else "SMS escalation",
+            page=f"sms:{phone_hash}",
+            note=f"SMS escalation from {phone_hash}",
         )
         background.add_task(notify_webhook, ticket_id)
+        reference = ticket_id.replace("-", "")[-8:].upper()
         reply = (
-            "የመምህር እርዳታ ተጠይቋል። መምህር በቅርቡ መልስ ይሰጥዎታል።"
+            "ተመዝግቧል። 23:00 ላይ አስተማሪ ላይኖር ይችላል፤ ምላሽ ዋስትና የለውም።"
             if lang == "am"
-            else "A tutor will answer here. It may take until morning."
+            else "Request queued. Tutors may be unavailable, including at 23:00; replies are not guaranteed."
         )
+        reply = format_sms_message(reply, suffix=f"STATUS {reference}")
         return PlainTextResponse(reply, media_type="text/plain")
+
+    # Command: STATUS <reference> checks a ticket from the same sender.
+    status_match = re.fullmatch(r"STATUS(?:\s+([A-F0-9]{8}))?", cmd)
+    if status_match:
+        if not phone_hash:
+            return PlainTextResponse("Use the same sender number used for the tutor request.", media_type="text/plain")
+        reference = status_match.group(1)
+        if not reference:
+            reply = "Reply STATUS and the 8-character code from your tutor-request message."
+            return PlainTextResponse(format_sms_message(reply), media_type="text/plain")
+        with connect() as db:
+            purge_expired_tickets(db)
+            rows = db.execute(
+                "SELECT id, reply, status FROM escalations WHERE id LIKE ? AND page=?",
+                (f"%{reference.lower()}", f"sms:{phone_hash}"),
+            ).fetchall()
+        if len(rows) != 1:
+            reply = "No matching request was found. Check the code and use the same sender number."
+            return PlainTextResponse(format_sms_message(reply), media_type="text/plain")
+        ticket = rows[0]
+        if ticket["status"] == "answered":
+            reply = f"Tutor: {ticket['reply'] or ''}"
+            return PlainTextResponse(format_sms_message(reply), media_type="text/plain")
+        if ticket["reply"]:
+            reply = f"Tutor update: {ticket['reply']}"
+        else:
+            reply = (
+                "እስካሁን መልስ የለም። ጊዜው ይለያያል፤ ዋስትና የለም።"
+                if lang == "am"
+                else "No tutor reply yet. Response times vary and are not guaranteed."
+            )
+        return PlainTextResponse(
+            format_sms_message(reply, suffix=f"STATUS {reference}"),
+            media_type="text/plain",
+        )
 
     # Command: JOBS lists up to 3 job titles
     if cmd == "JOBS":
@@ -523,28 +733,75 @@ async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTex
         reply = prefix + " ".join(f"{i+1}. {t}" for i, t in enumerate(job_titles))
         return PlainTextResponse(format_sms_message(reply), media_type="text/plain")
 
-    # Command: ALERT ON / ALERT OFF / ALERT toggles job alerts for that number
-    if cmd in ("ALERT ON", "ALERT OFF", "ALERT"):
+    # ALERT ON discloses the sender and possible carrier charges before consent.
+    if cmd == "ALERT":
+        sender = os.getenv("TWILIO_FROM_NUMBER", "").strip()
+        if not sms_alert_delivery_configured():
+            reply = "Job alerts are unavailable because the SMS sender is not configured."
+        elif lang == "am":
+            reply = f"ማሳወቂያ ከ{sender}፤ ክፍያ ሊኖር ይችላል። ለመቀጠል ALERT ON ይላኩ።"
+        else:
+            reply = f"Alerts come from {sender}; carrier rates may apply. Reply ALERT ON to continue."
+        return PlainTextResponse(format_sms_message(reply), media_type="text/plain")
+
+    if cmd == "ALERT ON":
+        if not phone_hash:
+            return PlainTextResponse("A sender number is needed to enable alerts.", media_type="text/plain")
+        if not sms_alert_delivery_configured():
+            return PlainTextResponse("Job alerts are unavailable because the SMS sender is not configured.", media_type="text/plain")
         now_iso = datetime.now(timezone.utc).isoformat()
         with connect() as db:
-            if cmd == "ALERT ON":
-                active = 1
-            elif cmd == "ALERT OFF":
-                active = 0
-            else:
-                row = db.execute("SELECT active FROM sms_alerts WHERE phone_hash = ?", (phone_hash,)).fetchone()
-                active = 0 if row and row["active"] == 1 else 1
+            db.execute(
+                "INSERT OR REPLACE INTO sms_alerts(phone_hash, active, phone_ciphertext, updated_at) VALUES(?, 2, ?, ?)",
+                (phone_hash, encrypt_sms_phone(stored_phone), now_iso),
+            )
+        sender = os.getenv("TWILIO_FROM_NUMBER", "").strip()
+        reply = (
+            f"ማሳወቂያዎች ከ{sender} ይመጣሉ፤ ክፍያ ሊኖር ይችላል። ለመስማማት ALERT YES ይላኩ።"
+            if lang == "am"
+            else f"Alerts come from {sender}; carrier rates may apply. Reply ALERT YES to opt in."
+        )
+        return PlainTextResponse(format_sms_message(reply), media_type="text/plain")
 
+    if cmd == "ALERT YES":
+        if not phone_hash or not sms_alert_delivery_configured():
+            return PlainTextResponse("Job alerts are unavailable because the SMS sender is not configured.", media_type="text/plain")
+        with connect() as db:
+            row = db.execute(
+                "SELECT active, updated_at, phone_ciphertext FROM sms_alerts WHERE phone_hash=?",
+                (phone_hash,),
+            ).fetchone()
+            pending = False
+            if row and row["active"] == 2 and row["phone_ciphertext"]:
+                try:
+                    requested_at = datetime.fromisoformat(row["updated_at"])
+                    pending = datetime.now(timezone.utc) - requested_at <= timedelta(hours=24)
+                except ValueError:
+                    pending = False
+            if not pending:
+                reply = "Send ALERT ON first to review the sender and cost information."
+            else:
+                db.execute(
+                    "UPDATE sms_alerts SET active=1, updated_at=? WHERE phone_hash=?",
+                    (datetime.now(timezone.utc).isoformat(), phone_hash),
+                )
+                sender = os.getenv("TWILIO_FROM_NUMBER", "").strip()
+                reply = (
+                    f"ማሳወቂያ በርቷል። ከ{sender}፤ ክፍያ ሊኖር ይችላል። ALERT OFF ያቁሙ።"
+                    if lang == "am"
+                    else f"Job alerts are on from {sender}; carrier rates may apply. Reply ALERT OFF to stop."
+                )
+        return PlainTextResponse(format_sms_message(reply), media_type="text/plain")
+
+    if cmd == "ALERT OFF":
+        now_iso = datetime.now(timezone.utc).isoformat()
+        with connect() as db:
             if phone_hash:
                 db.execute(
                     "INSERT OR REPLACE INTO sms_alerts(phone_hash, active, phone_ciphertext, updated_at) VALUES(?, ?, ?, ?)",
-                    (phone_hash, active, encrypt_sms_phone(stored_phone) if active and stored_phone else None, now_iso),
+                    (phone_hash, 0, None, now_iso),
                 )
-
-        if active == 1:
-            reply = "የሥራ ማሳወቂያ በርቷል።" if lang == "am" else "Job alerts turned on."
-        else:
-            reply = "የሥራ ማሳወቂያ ጠፍቷል።" if lang == "am" else "Job alerts turned off."
+        reply = "የሥራ ማሳወቂያ ጠፍቷል።" if lang == "am" else "Job alerts turned off."
         return PlainTextResponse(reply, media_type="text/plain")
 
     # Normal question: run answer pipeline
@@ -667,33 +924,77 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
         if len(decoded_audio) > 8_000_000:
             plain_bad("Voice note must be smaller than 8 MB.")
         audio_json = json.dumps({"mimeType": mime_type, "dataUrl": data_url})
+    access_token = secrets.token_urlsafe(32)
     ticket_id = save_escalation_record(
         conversation, language, page, note, audio_json, ticket_type,
         job_id.strip() if isinstance(job_id, str) else None,
         accommodation.strip() if isinstance(accommodation, str) else None,
         screen_context_json,
         phone=normalized_phone,
+        access_token_hash=hashlib.sha256(access_token.encode("utf-8")).hexdigest(),
     )
     background.add_task(notify_webhook, ticket_id)
-    return {"ticketId": ticket_id}
+    return {"ticketId": ticket_id, "accessToken": access_token}
 
 
 @app.get("/api/v1/escalations")
 def list_waiting(x_helper_token: str | None = Header(default=None)) -> list[dict[str, Any]]:
     helper_auth(x_helper_token)
     with connect() as db:
+        purge_expired_tickets(db)
         rows = db.execute("SELECT * FROM escalations WHERE status='waiting' ORDER BY created_at").fetchall()
     return [ticket_dict(row) for row in rows]
 
 
 @app.get("/api/v1/escalations/{ticket_id}")
-def get_escalation(ticket_id: str) -> dict[str, Any]:
+def get_escalation(
+    ticket_id: str,
+    x_learner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
     with connect() as db:
+        purge_expired_tickets(db)
         row = db.execute("SELECT * FROM escalations WHERE id=?", (ticket_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="We could not find that ticket.")
+    if row["access_token_hash"]:
+        token_hash = hashlib.sha256(x_learner_token.encode("utf-8")).hexdigest() if x_learner_token else ""
+        if not hmac.compare_digest(token_hash, row["access_token_hash"]):
+            raise HTTPException(status_code=404, detail="We could not find that ticket.")
     result = ticket_dict(row)
     return {"ticketId": result["ticketId"], "reply": result["reply"], "status": result["status"], "language": result["language"]}
+
+
+def learner_ticket_row(db: sqlite3.Connection, ticket_id: str, token: str) -> sqlite3.Row:
+    if not token or len(token) > 256:
+        raise HTTPException(status_code=404, detail="We could not find that ticket.")
+    purge_expired_tickets(db)
+    row = db.execute("SELECT * FROM escalations WHERE id=?", (ticket_id,)).fetchone()
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    if row is None or not row["access_token_hash"] or not hmac.compare_digest(token_hash, row["access_token_hash"]):
+        raise HTTPException(status_code=404, detail="We could not find that ticket.")
+    return row
+
+
+@app.get("/api/v1/escalations/{ticket_id}/data")
+def export_escalation_data(
+    ticket_id: str,
+    x_learner_token: str = Header(...),
+) -> dict[str, Any]:
+    with connect() as db:
+        row = learner_ticket_row(db, ticket_id, x_learner_token)
+        return ticket_dict(row)
+
+
+@app.delete("/api/v1/escalations/{ticket_id}/data")
+def delete_learner_escalation_data(
+    ticket_id: str,
+    x_learner_token: str = Header(...),
+) -> dict[str, str]:
+    with connect() as db:
+        learner_ticket_row(db, ticket_id, x_learner_token)
+        db.execute("DELETE FROM escalation_signals WHERE ticket_id=?", (ticket_id,))
+        db.execute("DELETE FROM escalations WHERE id=?", (ticket_id,))
+    return {"message": "Ticket data deleted."}
 
 
 @app.post("/api/v1/escalations/{ticket_id}/signal")
@@ -710,6 +1011,7 @@ def post_escalation_signal(
     if not isinstance(sdp, str) or not sdp.strip() or len(sdp) > 200_000:
         plain_bad("A valid WebRTC session description is required.")
     with connect() as db:
+        purge_expired_tickets(db)
         ticket = db.execute(
             "SELECT type FROM escalations WHERE id=?", (ticket_id,)
         ).fetchone()
@@ -737,6 +1039,7 @@ def get_escalation_signal(
     if signal_type == "offer":
         helper_auth(x_helper_token)
     with connect() as db:
+        purge_expired_tickets(db)
         ticket = db.execute(
             "SELECT type FROM escalations WHERE id=?", (ticket_id,)
         ).fetchone()
@@ -752,6 +1055,7 @@ def get_escalation_signal(
 @app.delete("/api/v1/escalations/{ticket_id}/signal")
 def delete_escalation_signal(ticket_id: str) -> dict[str, bool]:
     with connect() as db:
+        purge_expired_tickets(db)
         ticket = db.execute(
             "SELECT id FROM escalations WHERE id=?", (ticket_id,)
         ).fetchone()
@@ -767,18 +1071,24 @@ def reply(ticket_id: str, payload: dict[str, Any], x_helper_token: str | None = 
     text = payload.get("text")
     if not isinstance(text, str) or not text.strip() or len(text) > 8000:
         plain_bad("Write a reply of 1 to 8000 characters.")
+    resolve_ticket = payload.get("resolve", True)
+    if not isinstance(resolve_ticket, bool):
+        plain_bad("Resolve must be true or false.")
+    status = "answered" if resolve_ticket else "waiting"
     with connect() as db:
-        cursor = db.execute("UPDATE escalations SET reply=?, replied_at=?, status='answered' WHERE id=?",
-                            (text.strip(), datetime.now(timezone.utc).isoformat(), ticket_id))
+        purge_expired_tickets(db)
+        cursor = db.execute("UPDATE escalations SET reply=?, replied_at=?, status=? WHERE id=?",
+                            (text.strip(), datetime.now(timezone.utc).isoformat(), status, ticket_id))
     if not cursor.rowcount:
         raise HTTPException(status_code=404, detail="We could not find that ticket.")
-    return {"message": "Reply saved."}
+    return {"message": "Reply saved.", "status": status}
 
 
 @app.delete("/api/v1/escalations/{ticket_id}")
 def delete_escalation(ticket_id: str, x_helper_token: str | None = Header(default=None)) -> dict[str, str]:
     helper_auth(x_helper_token)
     with connect() as db:
+        db.execute("DELETE FROM escalation_signals WHERE ticket_id=?", (ticket_id,))
         cursor = db.execute("DELETE FROM escalations WHERE id=?", (ticket_id,))
     if not cursor.rowcount:
         raise HTTPException(status_code=404, detail="We could not find that ticket.")

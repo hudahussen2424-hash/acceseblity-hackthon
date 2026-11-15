@@ -52,17 +52,17 @@ export function stripPunctuation(text) {
 /**
  * Tokenises text according to the language:
  * - English: lowercased words with stop-words removed.
- * - Amharic: character 2-grams and 3-grams, Ethiopic punctuation stripped, no stemming.
+ * - Amharic/Tigrinya: character 2-grams and 3-grams, Ethiopic punctuation stripped.
  *
  * @param {string} text
- * @param {string} lang ("en" | "am")
+ * @param {string} lang
  * @returns {string[]}
  */
 export function tokenize(text, lang = "en") {
   if (!text || typeof text !== "string") return [];
   const cleaned = stripPunctuation(text);
 
-  if (lang === "am") {
+  if (lang === "am" || lang === "ti") {
     const words = cleaned.split(/\s+/).filter(Boolean);
     const tokens = [];
 
@@ -88,8 +88,9 @@ export function tokenize(text, lang = "en") {
     return tokens;
   }
 
-  // English tokenisation
+  // Keep non-English Latin/Arabic tokens intact instead of applying English stop words.
   const words = cleaned.toLowerCase().split(/\s+/).filter(Boolean);
+  if (lang !== "en") return words.filter((word) => word.length > 1);
   const filtered = words.filter((w) => !STOP_WORDS.has(w) && w.length > 1);
   return filtered.length > 0 ? filtered : words;
 }
@@ -106,22 +107,19 @@ export function tokenize(text, lang = "en") {
 export function scoreSection(queryTokens, section, lang = "en") {
   if (!queryTokens || queryTokens.length === 0 || !section) return 0;
 
-  let titleText = "";
-  if (lang === "am") {
-    if (typeof section.title === "object" && section.title?.am) {
-      titleText = section.title.am;
-    } else if (section.id && AMHARIC_TITLES[section.id]) {
-      titleText = AMHARIC_TITLES[section.id];
-    } else {
-      titleText = section.title || "";
-    }
-  } else {
-    titleText = typeof section.title === "object" ? (section.title?.en || "") : (section.title || "");
-  }
+  const translation = section.translations?.[lang];
+  const titleText = section.titles?.[lang]
+    || translation?.title
+    || (lang === "am" && section.id && AMHARIC_TITLES[section.id])
+    || (lang === "en" ? (typeof section.title === "object" ? section.title?.en : section.title) : "")
+    || (["ti", "om", "so"].includes(lang) ? "" : (typeof section.title === "object" ? section.title?.en : section.title))
+    || "";
 
   let bodyText = "";
   if (section.text) {
-    bodyText = typeof section.text === "string" ? section.text : (section.text[lang] || section.text.en || "");
+    bodyText = typeof section.text === "string"
+      ? section.text
+      : (section.text[lang] || (["ti", "om", "so"].includes(lang) ? "" : section.text.en) || "");
   }
 
   const titleTokens = new Set(tokenize(titleText, lang));
@@ -152,7 +150,7 @@ export function scoreSection(queryTokens, section, lang = "en") {
  *
  * @param {string} question
  * @param {Array<object>} sections
- * @param {string} lang ("en" | "am")
+ * @param {string} lang
  * @returns {{ best: { section: object, score: number } | null, others: Array<{ section: object, score: number }> }}
  */
 export function search(question, sections = [], lang = "en") {

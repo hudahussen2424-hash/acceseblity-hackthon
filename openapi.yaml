@@ -58,6 +58,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/config:
+    get:
+      summary: Assistant Config
+      operationId: assistant_config_api_v1_config_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: boolean
+                type: object
+                title: Response Assistant Config Api V1 Config Get
   /api/v1/jobs/notify:
     post:
       summary: Notify Job
@@ -184,6 +198,14 @@ paths:
         schema:
           type: string
           title: Ticket Id
+      - name: x-learner-token
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Learner-Token
       responses:
         '200':
           description: Successful Response
@@ -229,6 +251,74 @@ paths:
                   type: string
                 title: Response Delete Escalation Api V1 Escalations  Ticket Id  
                   Delete
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/escalations/{ticket_id}/data:
+    get:
+      summary: Export Escalation Data
+      operationId:
+        export_escalation_data_api_v1_escalations__ticket_id__data_get
+      parameters:
+      - name: ticket_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Ticket Id
+      - name: x-learner-token
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Learner-Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Export Escalation Data Api V1 Escalations
+                  Ticket Id  Data Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      summary: Delete Learner Escalation Data
+      operationId:
+        delete_learner_escalation_data_api_v1_escalations__ticket_id__data_delete
+      parameters:
+      - name: ticket_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Ticket Id
+      - name: x-learner-token
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Learner-Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                title: Response Delete Learner Escalation Data Api V1
+                  Escalations  Ticket Id  Data Delete
         '422':
           description: Validation Error
           content:

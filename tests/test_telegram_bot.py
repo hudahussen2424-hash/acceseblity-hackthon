@@ -1,4 +1,5 @@
 import json
+import re
 
 from api import main, telegram_bot
 
@@ -30,21 +31,36 @@ def test_alert_subscription_is_persisted_and_can_be_removed(monkeypatch, tmp_pat
         ).fetchone()[0] == 0
 
 
-def test_person_ticket_contains_recent_chat(monkeypatch, tmp_path):
+def test_person_ticket_contains_recent_chat_and_status_follow_up(monkeypatch, tmp_path):
     monkeypatch.setattr(main, "DB_PATH", tmp_path / "bot.sqlite3")
     telegram_bot.initialize_storage()
+    webhook_calls = []
+    monkeypatch.setattr(telegram_bot, "notify_webhook", lambda *args: webhook_calls.append(args))
     telegram_bot.record_message(123, "user", "How do I organize email?")
     telegram_bot.record_message(123, "assistant", "Start with clear folders.")
 
     response = telegram_bot.handle_text(123, "/person")
-    assert "may take until morning" in response
+    assert "23:00" in response
+    assert "not guaranteed" in response
+    assert "morning" not in response
+    reference = re.search(r"/status ([A-F0-9]{8})", response).group(1)
     with main.connect() as db:
         row = db.execute("SELECT conversation, note FROM escalations").fetchone()
+        ticket_id = db.execute("SELECT id FROM escalations").fetchone()["id"]
     assert json.loads(row["conversation"]) == [
         {"role": "user", "text": "How do I organize email?"},
         {"role": "assistant", "text": "Start with clear folders."},
     ]
     assert "123" in row["note"]
+    assert webhook_calls == [(ticket_id,)]
+    assert "No tutor reply yet" in telegram_bot.handle_text(123, f"/status {reference}")
+    assert "No matching" in telegram_bot.handle_text(456, f"/status {reference}")
+    with main.connect() as db:
+        db.execute(
+            "UPDATE escalations SET reply=?, status='answered' WHERE id=?",
+            ("Please review the lesson source.", ticket_id),
+        )
+    assert "Please review the lesson source." in telegram_bot.handle_text(123, f"/status {reference}")
 
 
 def test_regular_message_uses_shared_answer_pipeline(monkeypatch, tmp_path):

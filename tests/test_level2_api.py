@@ -1,11 +1,13 @@
 """Tests for Level 2 API endpoints, status codes, CORS, and webhooks."""
 import json
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 import pytest
 
-from api.main import app, DB_PATH, connect, initialize
+from api import qa
+from api.main import app, DB_PATH, connect, initialize, save_escalation_record
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +41,12 @@ def test_cors_headers_on_api(client):
     assert res.headers.get("access-control-allow-origin") in ("*", "http://localhost:8080")
 
 
+def test_helper_endpoints_fail_closed_when_secret_is_not_configured(client, monkeypatch):
+    monkeypatch.setenv("HELPER_TOKEN", "")
+    response = client.get("/api/v1/escalations")
+    assert response.status_code == 503
+
+
 def test_content_endpoints(client):
     # GET initial content
     get_res = client.get("/api/v1/content")
@@ -61,13 +69,62 @@ def test_content_endpoints(client):
     assert post_res.json()["indexed"] == 1
 
 
+def test_initialize_replaces_marker_bearing_seed_content():
+    seed = json.loads((Path(__file__).parents[1] / "demo" / "data" / "content.json").read_text(encoding="utf-8"))[0]
+    changed = {**seed, "text": {**seed["text"], "am": "Needs review [CHECK]."}}
+    with connect() as db:
+        db.execute(
+            "UPDATE content_sections SET section_json=? WHERE id=?",
+            (json.dumps(changed, ensure_ascii=False), seed["id"]),
+        )
+    initialize()
+    with connect() as db:
+        stored = json.loads(
+            db.execute("SELECT section_json FROM content_sections WHERE id=?", (seed["id"],)).fetchone()["section_json"]
+        )
+    assert stored["text"]["am"] == seed["text"]["am"]
+    assert "[CHECK]" not in stored["text"]["am"]
+
+
+def test_initialize_adds_new_locale_fields_without_replacing_existing_course_text():
+    seed = json.loads((Path(__file__).parents[1] / "demo" / "data" / "content.json").read_text(encoding="utf-8"))[0]
+    older = {**seed, "titles": {key: value for key, value in seed["titles"].items() if key not in {"ti", "om", "so"}}, "text": {key: value for key, value in seed["text"].items() if key not in {"ti", "om", "so"}}}
+    older["text"]["en"] = "Customized English text that must be preserved."
+    with connect() as db:
+        db.execute(
+            "UPDATE content_sections SET section_json=? WHERE id=?",
+            (json.dumps(older, ensure_ascii=False), seed["id"]),
+        )
+
+    initialize()
+    with connect() as db:
+        stored = json.loads(
+            db.execute("SELECT section_json FROM content_sections WHERE id=?", (seed["id"],)).fetchone()["section_json"]
+        )
+
+    assert stored["text"]["en"] == older["text"]["en"]
+    assert stored["text"]["ti"] == seed["text"]["ti"]
+    assert stored["titles"]["om"] == seed["titles"]["om"]
+
+
 def test_ask_endpoint(client):
-    # Valid question -> 200 JSON
+    # Valid question -> 200 JSON with best section and source link
     res = client.post("/api/v1/ask", json={"question": "What is virtual assistant work?", "language": "en"})
     assert res.status_code == 200
     data = res.json()
     assert "answer" in data
     assert "sources" in data
+    assert len(data["sources"]) == 1
+    assert "url" in data["sources"][0]
+    assert "title" in data["sources"][0]
+
+    # Valid Amharic question -> 200 JSON with best section and source link
+    res_am = client.post("/api/v1/ask", json={"question": "የቨርቹዋል አሲስታንት ሥራን ወደፊት ምን እየቀየረው ነው?", "language": "am"})
+    assert res_am.status_code == 200
+    data_am = res_am.json()
+    assert "answer" in data_am
+    assert len(data_am["sources"]) == 1
+    assert "url" in data_am["sources"][0]
 
     # Missing question -> 400 plain-words
     bad_res = client.post("/api/v1/ask", json={"language": "en"})
@@ -77,6 +134,70 @@ def test_ask_endpoint(client):
     # Invalid language -> 400
     bad_lang = client.post("/api/v1/ask", json={"question": "Hello", "language": "fr"})
     assert bad_lang.status_code == 400
+
+
+@pytest.mark.parametrize("language", ["ti", "om", "so"])
+def test_ask_returns_localized_course_answer_and_source_title(client, monkeypatch, language):
+    monkeypatch.setenv("AI_PROVIDER", "none")
+    seeded = json.loads(
+        (Path(__file__).parents[1] / "demo" / "data" / "content.json").read_text(encoding="utf-8")
+    )
+    section = seeded[1]
+    response = client.post(
+        "/api/v1/ask",
+        json={"question": section["titles"][language], "language": language},
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert section["text"][language] in result["answer"]
+    assert result["sources"] == [{"title": section["titles"][language], "url": section["url"], "type": "lesson"}]
+
+
+def test_indexed_jobs_include_localized_titles_and_text():
+    from api.main import indexed_sections
+
+    job = next(item for item in indexed_sections() if item.get("id") == "test-inbox-support")
+    assert job["titles"]["ti"] == job["translations"]["ti"]["title"]
+    assert job["translations"]["ti"]["description"] in job["text"]["ti"]
+
+
+def test_cloud_provider_requires_explicit_learner_consent(client, monkeypatch):
+    imported = []
+
+    class RetrievalOnlyProvider:
+        async def answer(self, question, sections, language):
+            return {"text": None}
+
+    def fake_import(name, package):
+        imported.append(name)
+        return RetrievalOnlyProvider()
+
+    monkeypatch.setenv("AI_PROVIDER", "cloud")
+    monkeypatch.setattr(qa.importlib, "import_module", fake_import)
+    assert client.get("/api/v1/config").json() == {"externalAiConsentRequired": True}
+
+    without_consent = client.post(
+        "/api/v1/ask",
+        json={"question": "What is virtual assistant work?", "language": "en"},
+    )
+    assert without_consent.status_code == 200
+    assert imported[-1].endswith(".providers.none")
+    assert without_consent.json()["mode"] == "search"
+
+    with_consent = client.post(
+        "/api/v1/ask",
+        json={
+            "question": "What is virtual assistant work?",
+            "language": "en",
+            "externalAiConsent": True,
+        },
+    )
+    assert with_consent.status_code == 200
+    assert imported[-1].endswith(".providers.cloud")
+
+    monkeypatch.setenv("AI_PROVIDER", "none")
+    assert client.get("/api/v1/config").json() == {"externalAiConsentRequired": False}
 
 
 def test_escalation_lifecycle_and_webhook(client, monkeypatch):
@@ -108,7 +229,9 @@ def test_escalation_lifecycle_and_webhook(client, monkeypatch):
         assert create_res.status_code == 201
         data = create_res.json()
         assert "ticketId" in data
+        assert "accessToken" in data
         ticket_id = data["ticketId"]
+        learner_headers = {"X-Learner-Token": data["accessToken"]}
 
         # Webhook was invoked with { "event": "ticket.opened", "ticketId": ..., "at": ... }
         assert len(webhook_calls) == 1
@@ -124,11 +247,24 @@ def test_escalation_lifecycle_and_webhook(client, monkeypatch):
         assert any(t["ticketId"] == ticket_id for t in tickets)
 
         # 3. Get single ticket -> 200
-        get_res = client.get(f"/api/v1/escalations/{ticket_id}")
+        assert client.get(f"/api/v1/escalations/{ticket_id}").status_code == 404
+        get_res = client.get(f"/api/v1/escalations/{ticket_id}", headers=learner_headers)
         assert get_res.status_code == 200
         assert get_res.json()["ticketId"] == ticket_id
 
-        # 4. Reply to ticket -> 200
+        # 4. Send an interim update without closing the request.
+        update_res = client.post(
+            f"/api/v1/escalations/{ticket_id}/reply",
+            headers={"X-Helper-Token": "test-secret-token"},
+            json={"text": "I am unavailable right now; I will follow up later.", "resolve": False},
+        )
+        assert update_res.status_code == 200
+        assert update_res.json()["status"] == "waiting"
+        waiting_ticket = client.get(f"/api/v1/escalations/{ticket_id}", headers=learner_headers).json()
+        assert waiting_ticket["status"] == "waiting"
+        assert waiting_ticket["reply"] == "I am unavailable right now; I will follow up later."
+
+        # 5. A final reply closes the waiting request.
         reply_res = client.post(
             f"/api/v1/escalations/{ticket_id}/reply",
             headers={"X-Helper-Token": "test-secret-token"},
@@ -136,6 +272,18 @@ def test_escalation_lifecycle_and_webhook(client, monkeypatch):
         )
         assert reply_res.status_code == 200
         assert reply_res.json()["message"] == "Reply saved."
+        assert reply_res.json()["status"] == "answered"
+        assert client.get(f"/api/v1/escalations/{ticket_id}", headers=learner_headers).json()["status"] == "answered"
+
+        export_res = client.get(f"/api/v1/escalations/{ticket_id}/data", headers=learner_headers)
+        assert export_res.status_code == 200
+        assert export_res.json()["note"] == "Needs human guidance"
+        assert export_res.json()["conversation"][0]["text"] == "Can someone help me with section 1?"
+        assert client.get(f"/api/v1/escalations/{ticket_id}/data").status_code == 400
+        assert client.get(
+            f"/api/v1/escalations/{ticket_id}/data",
+            headers={"X-Learner-Token": "incorrect"},
+        ).status_code == 404
 
         # 5. Non-existent ticket -> 404
         missing_res = client.get("/api/v1/escalations/non-existent-id")
@@ -150,6 +298,42 @@ def test_escalation_lifecycle_and_webhook(client, monkeypatch):
 
         # Now fetching deleted ticket returns 404
         assert client.get(f"/api/v1/escalations/{ticket_id}").status_code == 404
+
+
+def test_learner_can_delete_only_their_ticket_data(client):
+    created = client.post(
+        "/api/v1/escalations",
+        json={
+            "conversation": [],
+            "language": "en",
+            "page": "/lesson",
+            "note": "Private note",
+        },
+    ).json()
+    ticket_id, access_token = created["ticketId"], created["accessToken"]
+    response = client.delete(
+        f"/api/v1/escalations/{ticket_id}/data",
+        headers={"X-Learner-Token": access_token},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"message": "Ticket data deleted."}
+    assert client.get(f"/api/v1/escalations/{ticket_id}/data", headers={"X-Learner-Token": access_token}).status_code == 404
+
+
+def test_expired_tickets_are_removed_before_the_helper_inbox_lists_them(client, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("TICKET_RETENTION_DAYS", "30")
+    ticket_id = save_escalation_record(
+        [], "en", "/lesson", "expired",
+        created_at=(datetime.now(timezone.utc) - timedelta(days=31)).isoformat(),
+    )
+    monkeypatch.setenv("HELPER_TOKEN", "test-secret-token")
+    response = client.get("/api/v1/escalations", headers={"X-Helper-Token": "test-secret-token"})
+    assert response.status_code == 200
+    assert all(ticket["ticketId"] != ticket_id for ticket in response.json())
+    with connect() as db:
+        assert db.execute("SELECT id FROM escalations WHERE id=?", (ticket_id,)).fetchone() is None
 
 
 def test_jobs_notify_endpoint(client, monkeypatch):

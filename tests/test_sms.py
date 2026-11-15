@@ -2,10 +2,23 @@
 import hashlib
 import json
 import sqlite3
+from unittest.mock import MagicMock, patch
+from urllib.parse import parse_qs
 from fastapi.testclient import TestClient
 import pytest
+from cryptography.fernet import Fernet
 
-from api.main import app, DB_PATH, connect, format_sms_message, hash_phone, normalize_ethiopian_phone
+from api.main import (
+    app,
+    DB_PATH,
+    connect,
+    decrypt_sms_phone,
+    format_sms_message,
+    hash_phone,
+    normalize_ethiopian_phone,
+    send_sms_job_alerts,
+    _sms_units,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -55,8 +68,10 @@ def test_sms_inbound_person_command(client):
     res = client.post("/sms/inbound", json={"from": phone, "text": "PERSON"})
     assert res.status_code == 200
     assert res.headers["content-type"].startswith("text/plain")
-    assert len(res.text) <= 160
-    assert "tutor will answer here" in res.text
+    assert _sms_units(res.text) <= 160
+    assert "STATUS " in res.text
+    assert "23:00" in res.text
+    assert "not guaranteed" in res.text
 
     # Verify that raw phone number is NEVER stored; only phone hash
     with connect() as db:
@@ -66,6 +81,42 @@ def test_sms_inbound_person_command(client):
         assert phone not in row["note"]
         assert phone not in row["conversation"]
         assert expected_hash in row["note"] or expected_hash in row["page"]
+
+
+def test_sms_person_request_can_check_for_a_tutor_update(client, monkeypatch):
+    phone = "+251911123456"
+    response = client.post("/sms/inbound", json={"from": phone, "text": "PERSON"})
+    reference = response.text.rsplit("STATUS ", 1)[1]
+    assert len(reference) == 8
+    assert _sms_units(response.text) <= 160
+
+    pending = client.post("/sms/inbound", json={"from": phone, "text": f"STATUS {reference}"})
+    assert "No tutor reply yet" in pending.text
+    assert "STATUS " + reference in pending.text
+    assert _sms_units(pending.text) <= 160
+
+    with connect() as db:
+        ticket = db.execute(
+            "SELECT id FROM escalations WHERE page=?",
+            (f"sms:{hash_phone(phone)}",),
+        ).fetchone()
+    monkeypatch.setenv("HELPER_TOKEN", "test-helper-token")
+    reply = client.post(
+        f"/api/v1/escalations/{ticket['id']}/reply",
+        headers={"X-Helper-Token": "test-helper-token"},
+        json={"text": "Please review the lesson source."},
+    )
+    assert reply.status_code == 200
+    answered = client.post("/sms/inbound", json={"from": phone, "text": f"STATUS {reference}"})
+    assert "Please review the lesson source." in answered.text
+    assert "STATUS " not in answered.text
+    assert _sms_units(answered.text) <= 160
+
+    other_sender = client.post(
+        "/sms/inbound",
+        json={"from": "+251922334455", "text": f"STATUS {reference}"},
+    )
+    assert "No matching request" in other_sender.text
 
 
 def test_sms_inbound_jobs_command(client):
@@ -82,31 +133,79 @@ def test_sms_inbound_jobs_command(client):
     assert len(res_am.text) <= 160
 
 
-def test_sms_inbound_alert_toggle(client):
+def configure_sms_alerts(monkeypatch):
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC-test-account")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "test-auth")
+    monkeypatch.setenv("TWILIO_FROM_NUMBER", "+251900000000")
+    monkeypatch.setenv("SMS_ENCRYPTION_KEY", Fernet.generate_key().decode("ascii"))
+
+
+def test_sms_inbound_alert_opt_in_disclosure_and_opt_out(client, monkeypatch):
     phone = "+251922334455"
     p_hash = hash_phone(phone)
+    configure_sms_alerts(monkeypatch)
 
-    # 1. Turn ON
-    res_on = client.post("/sms/inbound", json={"from": phone, "text": "ALERT ON"})
-    assert res_on.status_code == 200
-    assert "Job alerts turned on." in res_on.text
-    assert len(res_on.text) <= 160
+    disclosure = client.post("/sms/inbound", json={"from": phone, "text": "ALERT"})
+    assert "+251900000000" in disclosure.text
+    assert "carrier rates may apply" in disclosure.text
+    with connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM sms_alerts").fetchone()[0] == 0
+
+    confirmation = client.post("/sms/inbound", json={"from": phone, "text": "ALERT ON"})
+    assert "ALERT YES" in confirmation.text
+    assert "+251900000000" in confirmation.text
+    assert "carrier rates may apply" in confirmation.text
 
     with connect() as db:
         row = db.execute("SELECT * FROM sms_alerts WHERE phone_hash = ?", (p_hash,)).fetchone()
         assert row is not None
+        assert row["active"] == 2
+
+    res_yes = client.post("/sms/inbound", json={"from": phone, "text": "ALERT YES"})
+    assert "Job alerts are on" in res_yes.text
+    with connect() as db:
+        row = db.execute("SELECT * FROM sms_alerts WHERE phone_hash = ?", (p_hash,)).fetchone()
         assert row["active"] == 1
 
-    # 2. Turn OFF
     res_off = client.post("/sms/inbound", json={"from": phone, "text": "ALERT OFF"})
     assert res_off.status_code == 200
     assert "Job alerts turned off." in res_off.text
-    assert len(res_off.text) <= 160
 
     with connect() as db:
         row = db.execute("SELECT * FROM sms_alerts WHERE phone_hash = ?", (p_hash,)).fetchone()
         assert row is not None
         assert row["active"] == 0
+
+
+def test_sms_job_alert_link_is_preserved_in_one_segment(client, monkeypatch):
+    configure_sms_alerts(monkeypatch)
+    with connect() as db:
+        db.execute(
+            "INSERT INTO sms_alerts(phone_hash, active, phone_ciphertext, updated_at) VALUES(?, 1, ?, ?)",
+            (hash_phone("+251911223344"), "encrypted-phone", "2026-11-15T00:00:00+00:00"),
+        )
+    requests = []
+
+    def fake_urlopen(request, timeout=8):
+        requests.append(request)
+        response = MagicMock()
+        response.status = 201
+        response.__enter__.return_value = response
+        return response
+
+    link = "/savanna/pages/jobs.html#test-listing"
+    with patch("api.main.decrypt_sms_phone", return_value="+251911223344"), \
+         patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        result = send_sms_job_alerts("New: Spreadsheet Helper (TEST) | On site | Addis Ababa", link)
+
+    assert result == {"sent": 1, "failed": 0, "skipped": 0}
+    body = parse_qs(requests[0].data.decode("utf-8"))["Body"][0]
+    assert body.endswith(
+        "https://github.com/hudahussen2424-hash/acceseblity-hackthon/blob/main/"
+        "savanna/pages/jobs.html#test-listing"
+    )
+    assert "Spreadsheet Helper" in body
+    assert _sms_units(body) <= 160
 
 
 def test_sms_truncation_at_word_boundary():
@@ -116,6 +215,51 @@ def test_sms_truncation_at_word_boundary():
     assert formatted.endswith("(Course s2)")
     # Must not truncate mid-word
     assert not formatted.endswith("wor... (Course s2)")
+
+
+def test_sms_uses_one_segment_budget_for_amharic_and_gsm_text():
+    amharic = format_sms_message("የሥራ ማሳወቂያ " * 20, "Course s2")
+    english = format_sms_message("A long English update " * 20, "Course s2")
+    assert _sms_units(amharic) <= 70
+    assert _sms_units(english) <= 160
+    assert amharic.endswith("(Course s2)")
+    assert english.endswith("(Course s2)")
+
+
+def test_sms_job_alert_calls_configured_twilio_gateway(client, monkeypatch):
+    from urllib.parse import parse_qs
+
+    account_sid = "AC-test-account"
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", account_sid)
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "test-auth")
+    monkeypatch.setenv("TWILIO_FROM_NUMBER", "+251900000000")
+    with connect() as db:
+        db.execute(
+            "INSERT INTO sms_alerts(phone_hash, active, phone_ciphertext, updated_at) VALUES(?, 1, ?, ?)",
+            (hash_phone("+251911223344"), "encrypted-phone", "2026-11-15T00:00:00+00:00"),
+        )
+
+    requests = []
+
+    def fake_urlopen(request, timeout=8):
+        requests.append(request)
+        response = MagicMock()
+        response.status = 201
+        response.__enter__.return_value = response
+        return response
+
+    with patch("api.main.decrypt_sms_phone", return_value="+251911223344"), \
+         patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        result = send_sms_job_alerts("New job in Addis Ababa", "https://example.test/jobs/101")
+
+    assert result == {"sent": 1, "failed": 0, "skipped": 0}
+    assert len(requests) == 1
+    assert requests[0].full_url == f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+    assert requests[0].get_header("Authorization").startswith("Basic ")
+    payload = parse_qs(requests[0].data.decode("utf-8"))
+    assert payload["To"] == ["+251911223344"]
+    assert payload["From"] == ["+251900000000"]
+    assert payload["Body"] == ["New job in Addis Ababa https://example.test/jobs/101"]
 
 
 @pytest.mark.parametrize(("entered", "expected"), [
@@ -133,9 +277,12 @@ def test_rejects_unsupported_ethiopian_phone_shapes(entered):
     assert normalize_ethiopian_phone(entered) is None
 
 
-def test_sms_alert_subscription_hash_uses_canonical_ethiopian_number(client):
-    national = client.post("/sms/inbound", json={"from": "0911223344", "text": "ALERT ON"})
-    international = client.post("/sms/inbound", json={"from": "+251911223344", "text": "ALERT ON"})
+def test_sms_alert_subscription_hash_uses_canonical_ethiopian_number(client, monkeypatch):
+    configure_sms_alerts(monkeypatch)
+    client.post("/sms/inbound", json={"from": "0911223344", "text": "ALERT ON"})
+    client.post("/sms/inbound", json={"from": "+251911223344", "text": "ALERT ON"})
+    national = client.post("/sms/inbound", json={"from": "0911223344", "text": "ALERT YES"})
+    international = client.post("/sms/inbound", json={"from": "+251911223344", "text": "ALERT YES"})
     assert national.status_code == international.status_code == 200
     canonical_hash = hash_phone("+251911223344")
     with connect() as db:
