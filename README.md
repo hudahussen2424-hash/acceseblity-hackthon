@@ -192,6 +192,8 @@ npm run test:axe
 
 These automated checks do not establish native-speaker review, device/browser speech support, screen-sharing interoperability on physical devices, keyboard-only/screen-reader usability, an actual 200% browser zoom result, or WCAG conformance. The co-designer and real-device checks remain pending until someone performs and records them.
 
+`npm run test:e2e` runs Playwright against a local static server and a local API configured with a test helper token and an isolated SQLite database. It verifies browser-to-API flows in that setup; it does not verify the Docker Compose/Nginx deployment, production HTTPS or hosting, external AI/SMS/Telegram delivery, real tutor availability, or behavior across real devices and networks. Some browser capabilities, including speech and WebRTC, are stubbed in automated cases. Treat a passing run as local integration evidence, not field or production validation.
+
 ## Offline and slow connection (what works, measured Slow 3G load time, size in KB)
 
 After content has loaded, the widget can search its locally loaded sections if the API request fails. When the browser reports itself offline, submitted questions are kept in `localStorage` and retried after an `online` event. Chat history, content, translations, and that queue are also stored in browser `localStorage`; clearing site data removes those local copies. Offline answers are limited to content already available in the page or cache. Tutor tickets, live API calls, and WebRTC cannot be completed offline.

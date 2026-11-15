@@ -5,27 +5,42 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tutor escalation inbox</title>
   <style>
-    :root { color-scheme: light; font: 1rem/1.5 system-ui, sans-serif; color: #17202a; background: #f4f6f8; }
-    body { margin: 0 auto; max-width: 56rem; padding: 1rem; }
+    :root { color-scheme: light; font: 1rem/1.6 system-ui, sans-serif; color: #18251d; background: #f3f7f4; }
+    body { max-width: 68rem; margin: 0 auto; padding: clamp(1rem, 3vw, 2.5rem) 1rem; }
     h1, h2, p { margin-block: 0 .75rem; }
-    label { display: block; font-weight: 700; margin-block: .75rem .25rem; }
+    h1 { color: #174b2d; font-size: clamp(1.8rem, 4vw, 2.5rem); line-height: 1.2; letter-spacing: -.03em; }
+    main > p { max-width: 58rem; color: #52635a; }
+    label { display: block; margin-block: .75rem .25rem; font-weight: 700; }
     input, textarea, button { box-sizing: border-box; font: inherit; }
-    input, textarea { width: 100%; padding: .65rem; border: 2px solid #364152; border-radius: .25rem; }
-    button { min-height: 44px; padding: .5rem 1rem; color: white; background: #123e67; border: 2px solid #123e67; border-radius: .25rem; cursor: pointer; }
-    :focus-visible { outline: 3px solid #b04a00; outline-offset: 2px; }
+    input, textarea { width: 100%; padding: .7rem .8rem; border: 1px solid #87988c; border-radius: .65rem; background: #fff; color: #18251d; }
+    button { min-height: 44px; padding: .6rem 1rem; color: #fff; background: #166534; border: 2px solid #166534; border-radius: .65rem; font-weight: 650; cursor: pointer; transition: background-color .16s ease, transform .16s ease; }
+    button:hover:not(:disabled) { background: #14532d; transform: translateY(-1px); }
+    button:disabled { cursor: wait; opacity: .65; }
+    :focus-visible { outline: 3px solid #92400e; outline-offset: 3px; }
     .toolbar, .actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+    .toolbar { margin-block: 1.5rem; padding: 1.25rem; border: 1px solid #d8e4da; border-radius: 1rem; background: #fff; box-shadow: 0 8px 24px rgba(23, 41, 30, .05); }
     .keep-open { display: flex; align-items: center; gap: .5rem; }
     .keep-open input { width: 24px; height: 24px; flex: none; padding: 0; }
     .toolbar label { flex: 1 1 20rem; }
-    #status { min-height: 1.5em; }
-    #tickets { display: grid; gap: 1rem; padding: 0; list-style: none; }
-    .ticket { padding: 1rem; border: 1px solid #8995a3; border-radius: .5rem; background: white; overflow-wrap: anywhere; }
+    #status { min-height: 1.5em; color: #31583d; font-weight: 600; }
+    #tickets { display: grid; gap: 1.25rem; padding: 0; list-style: none; }
+    .ticket { padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid #d8e4da; border-radius: 1rem; background: #fff; box-shadow: 0 10px 28px rgba(23, 41, 30, .06); overflow-wrap: anywhere; }
+    .ticket h2 { color: #1e5032; font-size: 1.25rem; line-height: 1.35; }
+    .ticket h3 { margin-block: 1.25rem .5rem; color: #31583d; font-size: 1rem; }
+    .ticket p { color: #405247; }
     .conversation { padding-inline-start: 1.25rem; }
     .conversation li { margin-block: .5rem; white-space: pre-wrap; }
-    .screen-context, .screen-demo { margin-block: 1rem; padding: 1rem; border: 1px solid #8995a3; border-radius: .5rem; }
+    .screen-context, .screen-demo { margin-block: 1rem; padding: 1rem; border: 1px solid #cbdccf; border-radius: .85rem; background: #f7faf7; }
     .screen-context pre { max-height: 16rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .screen-context img, .screen-demo video { display: block; max-width: 100%; margin-block: .5rem; }
-    .screen-demo video { width: 100%; max-height: 60vh; background: #111; }
+    .screen-context img, .screen-demo video { display: block; max-width: 100%; margin-block: .75rem; border-radius: .65rem; }
+    .screen-demo video { width: 100%; max-height: 60vh; background: #17251d; }
+    audio { display: block; width: min(100%, 32rem); margin-block: .75rem; }
+    textarea { min-height: 7rem; resize: vertical; }
+    @media (max-width: 640px) {
+      .toolbar { padding: 1rem; }
+      .toolbar label { flex-basis: 100%; }
+      .actions button { flex: 1 1 10rem; }
+    }
   </style>
 </head>
 <body>

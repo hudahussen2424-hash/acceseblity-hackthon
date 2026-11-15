@@ -5,16 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>The Future of Virtual Assistant Work — Savanna</title>
   <style>
-    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; margin: 0; padding: 0; background: #fdfdfd; }
-    header.nav-header { background: #002b56; color: white; padding: 12px 24px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
-    nav.lesson-nav { max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 12px; font-size: 14px; }
-    nav.lesson-nav a { color: #f0f4f8; text-decoration: none; padding: 4px 8px; border-radius: 4px; }
-    nav.lesson-nav a:hover, nav.lesson-nav a:focus { background: rgba(255,255,255,0.15); text-decoration: underline; }
-    main.lesson-body { max-width: 800px; margin: 32px auto; padding: 0 20px 80px; }
-    h1.lesson-title { font-size: 2rem; color: #002b56; margin-bottom: 24px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; }
-    section.lesson-section { margin-top: 36px; padding-top: 12px; }
-    h2.section-heading { font-size: 1.5rem; color: #0f172a; margin-bottom: 12px; scroll-margin-top: 60px; }
-    p { margin: 0 0 16px; color: #334155; }
+    :root { color-scheme: light; scroll-behavior: smooth; }
+    body { margin: 0; color: #18251d; background: #f3f7f4; font: 1rem/1.7 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    header.nav-header { position: sticky; top: 0; z-index: 100; padding: 12px 24px; background: rgba(255, 255, 255, .96); border-bottom: 1px solid #dce7df; box-shadow: 0 4px 18px rgba(25, 55, 35, .06); backdrop-filter: blur(12px); }
+    nav.lesson-nav { max-width: 1080px; margin: 0 auto; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin; font-size: .9rem; }
+    nav.lesson-nav a { flex: 0 0 auto; padding: 8px 12px; border: 1px solid transparent; border-radius: 999px; color: #35483c; text-decoration: none; white-space: nowrap; }
+    nav.lesson-nav a:hover, nav.lesson-nav a:focus-visible { color: #14532d; background: #e8f3eb; border-color: #c9dfce; }
+    nav.lesson-nav a:focus-visible { outline: 3px solid #92400e; outline-offset: 2px; }
+    main.lesson-body { max-width: 920px; margin: 40px auto; padding: 0 24px 96px; }
+    h1.lesson-title { margin: 0 0 28px; padding: 0 0 20px; color: #174b2d; font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.15; letter-spacing: -.035em; }
+    h1.lesson-title::after { display: block; width: 64px; height: 5px; margin-top: 18px; border-radius: 999px; background: #318454; content: ""; }
+    section.lesson-section { margin-top: 20px; padding: 24px 26px; border: 1px solid #e0e9e2; border-inline-start: 4px solid #318454; border-radius: 14px; background: #fff; box-shadow: 0 8px 24px rgba(23, 41, 30, .045); scroll-margin-top: 88px; }
+    h2.section-heading { margin: 0 0 10px; color: #1e5032; font-size: clamp(1.2rem, 2.4vw, 1.5rem); line-height: 1.3; letter-spacing: -.015em; }
+    p { margin: 0; color: #425348; }
+    @media (max-width: 640px) {
+      header.nav-header { padding: 8px 12px; }
+      nav.lesson-nav { gap: 4px; font-size: .85rem; }
+      nav.lesson-nav a { padding: 7px 10px; }
+      main.lesson-body { margin: 24px auto; padding: 0 16px 88px; }
+      section.lesson-section { padding: 19px 18px; border-radius: 12px; }
+    }
+    @media (prefers-reduced-motion: reduce) { :root { scroll-behavior: auto; } }
   </style>
 </head>
 <body>
