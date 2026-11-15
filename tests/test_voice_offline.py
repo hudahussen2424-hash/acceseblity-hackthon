@@ -49,6 +49,18 @@ def test_low_confidence_speech_never_dispatches():
     assert result["status"] == "clarification_required"
 
 
+def test_amharic_voice_feedback_comes_from_locale_data():
+    locale = json.loads((Path(__file__).parents[1] / "module" / "i18n" / "am.json").read_text(encoding="utf-8"))
+    result = _run(main._voice_command({
+        "transcript": "ask a tutor", "language": "am", "confidence": 0.2,
+    }))
+
+    assert result["answerText"] == locale["api"]["voice_low_confidence"]
+    with pytest.raises(HTTPException) as error:
+        _run(main._voice_command({"transcript": "", "language": "am"}))
+    assert error.value.detail == locale["api"]["error_voice_transcript"]
+
+
 def test_explicit_send_creates_one_ticket_and_idempotent_retry(isolated_voice_db):
     draft_result = _run(main._voice_command({
         "transcript": "Please ask a tutor about lesson access", "language": "en",

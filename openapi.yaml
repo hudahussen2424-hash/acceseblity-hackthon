@@ -5,53 +5,93 @@ info:
 paths:
   /api/v1/helper/metrics:
     get:
-      summary: Get Tutor Operations Metrics
-      description: Returns aggregate queue age, response-time, and
-        unreviewed-feedback metrics. Ticket content and learner contact data are
-        never returned.
+      summary: Helper Metrics
+      description: Return privacy-safe tutor queue and response-time totals.
+      operationId: helper_metrics_api_v1_helper_metrics_get
       parameters:
       - name: x-helper-token
         in: header
-        required: true
+        required: false
         schema:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Helper-Token
       responses:
         '200':
-          description: Privacy-safe aggregate tutor metrics.
+          description: Successful Response
           content:
             application/json:
               schema:
                 type: object
                 additionalProperties: true
-        '401':
-          description: Invalid helper token.
-        '503':
-          description: Helper access is not configured.
+                title: Response Helper Metrics Api V1 Helper Metrics Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/helper/content-health:
     get:
-      summary: Check Indexed Course Content
-      description: Reports missing source links, supported-language text,
-        malformed sections, and placeholder content without exposing ticket
-        data.
+      summary: Helper Content Health
+      description: Check indexed course records for missing evidence and locale
+        coverage.
+      operationId: helper_content_health_api_v1_helper_content_health_get
       parameters:
       - name: x-helper-token
         in: header
-        required: true
+        required: false
         schema:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Helper-Token
       responses:
         '200':
-          description: Course evidence and localization health report.
+          description: Successful Response
           content:
             application/json:
               schema:
                 type: object
                 additionalProperties: true
-        '401':
-          description: Invalid helper token.
-        '503':
-          description: Helper access is not configured.
+                title: Response Helper Content Health Api V1 Helper Content
+                  Health Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/content:
+    post:
+      summary: Index Content
+      operationId: index_content_api_v1_content_post
+      parameters:
+      - name: x-helper-token
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Helper-Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: integer
+                title: Response Index Content Api V1 Content Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     get:
       summary: Get Content
       operationId: get_content_api_v1_content_get
@@ -61,24 +101,132 @@ paths:
           content:
             application/json:
               schema:
-                items:
-                  additionalProperties: true
-                  type: object
                 type: array
+                items:
+                  type: object
+                  additionalProperties: true
                 title: Response Get Content Api V1 Content Get
-    post:
-      summary: Index Content
-      operationId: index_content_api_v1_content_post
+  /api/v1/voice/guide:
+    get:
+      summary: Get Voice Guide
+      operationId: get_voice_guide_api_v1_voice_guide_get
+      parameters:
+      - name: language
+        in: query
+        required: false
+        schema:
+          type: string
+          default: en
+          title: Language
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                additionalProperties:
-                  type: integer
                 type: object
-                title: Response Index Content Api V1 Content Post
+                additionalProperties: true
+                title: Response Get Voice Guide Api V1 Voice Guide Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voice/capabilities:
+    get:
+      summary: Get Voice Capabilities
+      operationId: get_voice_capabilities_api_v1_voice_capabilities_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Voice Capabilities Api V1 Voice Capabilities
+                  Get
+  /api/v1/voice/guide/audio:
+    get:
+      summary: Get Voice Guide Audio
+      operationId: get_voice_guide_audio_api_v1_voice_guide_audio_get
+      parameters:
+      - name: language
+        in: query
+        required: false
+        schema:
+          type: string
+          default: en
+          title: Language
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voice/commands:
+    post:
+      summary: Post Voice Command
+      operationId: post_voice_command_api_v1_voice_commands_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Post Voice Command Api V1 Voice Commands Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voice/actions/sync:
+    post:
+      summary: Sync Voice Actions
+      operationId: sync_voice_actions_api_v1_voice_actions_sync_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Payload
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Sync Voice Actions Api V1 Voice Actions Sync
+                  Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/ask:
     post:
       summary: Ask
@@ -93,17 +241,108 @@ paths:
         required: true
       responses:
         '200':
-          description: Successful response; includes source-verified grounding
-            and evidence quote metadata. Answer status is answered, not_found,
-            or refused.
+          description: Successful Response
           content:
             application/json:
               schema:
                 additionalProperties: true
                 type: object
                 title: Response Ask Api V1 Ask Post
-        '429':
-          $ref: '#/components/responses/RateLimited'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/answer-feedback:
+    post:
+      summary: Create Answer Feedback
+      operationId: create_answer_feedback_api_v1_answer_feedback_post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              title: Payload
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                title: Response Create Answer Feedback Api V1 Answer Feedback
+                  Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      summary: List Answer Feedback
+      operationId: list_answer_feedback_api_v1_answer_feedback_get
+      parameters:
+      - name: x-helper-token
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Helper-Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                title: Response List Answer Feedback Api V1 Answer Feedback Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/answer-feedback/{feedback_id}/reviewed:
+    post:
+      summary: Mark Answer Feedback Reviewed
+      operationId:
+        mark_answer_feedback_reviewed_api_v1_answer_feedback__feedback_id__reviewed_post
+      parameters:
+      - name: feedback_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Feedback Id
+      - name: x-helper-token
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Helper-Token
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                title: Response Mark Answer Feedback Reviewed Api V1 Answer
+                  Feedback  Feedback Id  Reviewed Post
         '422':
           description: Validation Error
           content:
@@ -171,8 +410,6 @@ paths:
             text/plain:
               schema:
                 type: string
-        '429':
-          $ref: '#/components/responses/RateLimited'
   /sms/inbound:
     post:
       summary: Sms Inbound
@@ -184,21 +421,18 @@ paths:
             text/plain:
               schema:
                 type: string
-        '429':
-          $ref: '#/components/responses/RateLimited'
   /api/v1/escalations:
     post:
       summary: Create Escalation
       operationId: create_escalation_api_v1_escalations_post
-      description: Creates a ticket and stores a deterministic, versioned tutor
-        handoff brief. The original conversation remains available to
-        authenticated helpers.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EscalationCreateRequest'
+              type: object
+              additionalProperties: true
+              title: Payload
       responses:
         '201':
           description: Successful Response
@@ -209,8 +443,6 @@ paths:
                 additionalProperties:
                   type: string
                 title: Response Create Escalation Api V1 Escalations Post
-        '429':
-          $ref: '#/components/responses/RateLimited'
         '422':
           description: Validation Error
           content:
@@ -220,8 +452,6 @@ paths:
     get:
       summary: List Waiting
       operationId: list_waiting_api_v1_escalations_get
-      description: Lists waiting tickets, including their handoff briefs, for an
-        authenticated helper.
       parameters:
       - name: x-helper-token
         in: header
@@ -233,14 +463,14 @@ paths:
           title: X-Helper-Token
       responses:
         '200':
-          description: Waiting tickets with the original conversation and
-            helper-only handoff brief.
+          description: Successful Response
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/HelperEscalation'
+                  type: object
+                  additionalProperties: true
                 title: Response List Waiting Api V1 Escalations Get
         '422':
           description: Validation Error
@@ -250,34 +480,37 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/helper/escalations/{ticket_id}/brief:
     get:
-      summary: Get Tutor Handoff Brief
-      description: Returns or locally regenerates a versioned brief. Requires
-        the helper token; learner access tokens are not accepted.
+      summary: Get Helper Handoff Brief
+      operationId:
+        get_helper_handoff_brief_api_v1_helper_escalations__ticket_id__brief_get
       parameters:
       - name: ticket_id
         in: path
         required: true
         schema:
           type: string
+          title: Ticket Id
       - name: x-helper-token
         in: header
-        required: true
+        required: false
         schema:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Helper-Token
       responses:
         '200':
-          description: Deterministic helper handoff brief with an explicit
-            evidence availability state.
+          description: Successful Response
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HandoffBrief'
-        '401':
-          description: Invalid helper token.
-        '404':
-          description: Ticket was not found or has expired.
-        '503':
-          description: Helper access is not configured.
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/escalations/{ticket_id}:
     get:
       summary: Get Escalation
@@ -305,7 +538,8 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-                title: Response Get Escalation Api V1 Escalations  Ticket Id Get
+                title: Response Get Escalation Api V1 Escalations  Ticket Id
+                  Get
         '422':
           description: Validation Error
           content:
@@ -373,8 +607,8 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-                title: Response Export Escalation Data Api V1 Escalations Ticket
-                  Id  Data Get
+                title: Response Export Escalation Data Api V1 Escalations
+                  Ticket Id  Data Get
         '422':
           description: Validation Error
           content:
@@ -452,8 +686,8 @@ paths:
                 type: object
                 additionalProperties:
                   type: boolean
-                title: Response Post Escalation Signal Api V1 Escalations Ticket
-                  Id  Signal Post
+                title: Response Post Escalation Signal Api V1 Escalations
+                  Ticket Id  Signal Post
         '422':
           description: Validation Error
           content:
@@ -575,326 +809,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/voice/guide:
-    get:
-      summary: Get Voice Guide
-      operationId: get_voice_guide_api_v1_voice_guide_get
-      parameters:
-      - name: language
-        in: query
-        required: false
-        schema:
-          type: string
-          default: en
-          title: Language
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                type: object
-                required:
-                - version
-                - language
-                - steps
-                - text
-                - speakText
-                properties:
-                  version:
-                    type: integer
-                  language:
-                    type: string
-                    enum:
-                    - en
-                    - am
-                    - om
-                    - ti
-                    - so
-                    - ar
-                  steps:
-                    type: array
-                    items:
-                      type: string
-                  text:
-                    type: string
-                  speakText:
-                    type: string
-                  textAvailable:
-                    type: boolean
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      description: Returns a five-step guide in one of the supported languages.
-        Text and speakText can be rendered by the existing client speech
-        synthesis without a paid TTS service.
-  /api/v1/voice/capabilities:
-    get:
-      summary: Get Voice Capabilities
-      operationId: get_voice_capabilities_api_v1_voice_capabilities_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                additionalProperties: true
-                type: object
-                title: Response Get Voice Capabilities Api V1 Voice Capabilities
-                  Get
-      description: Reports only installed/configured local speech models and
-        confirms that voice APIs do not call external services.
-  /api/v1/voice/guide/audio:
-    get:
-      summary: Get Voice Guide Audio
-      operationId: get_voice_guide_audio_api_v1_voice_guide_audio_get
-      parameters:
-      - name: language
-        in: query
-        required: false
-        schema:
-          type: string
-          default: en
-          title: Language
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema: {}
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      description: Synthesizes guide audio with an installed local Piper model;
-        returns 503 when unavailable.
-  /api/v1/voice/commands:
-    post:
-      summary: Post Voice Command
-      operationId: post_voice_command_api_v1_voice_commands_post
-      parameters:
-      - name: Idempotency-Key
-        in: header
-        required: false
-        description: Required for a spoken tutor send; reuse the same value to
-          safely retry.
-        schema:
-          type: string
-          minLength: 16
-          maxLength: 128
-      - name: language
-        in: query
-        required: false
-        schema:
-          type: string
-          enum:
-          - en
-          - am
-          - om
-          - ti
-          - so
-          - ar
-          default: en
-      responses:
-        '200':
-          description: Transcript/action result; may return a draft,
-            clarification, answer, status, or confirmed ticket send.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: true
-                title: Response Post Voice Command Api V1 Voice Commands Post
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      description: Processes a local browser transcript or locally transcribes
-        uploaded audio. No cloud speech provider is used. Tutor submission
-        requires an explicit consented, signed draft and spoken confirmation.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-              - transcript
-              additionalProperties: true
-              properties:
-                transcript:
-                  type: string
-                  maxLength: 4000
-                language:
-                  type: string
-                  enum:
-                  - en
-                  - am
-                  - om
-                  - ti
-                  - so
-                  - ar
-                confidence:
-                  type: number
-                  minimum: 0
-                  maximum: 1
-                shareConsent:
-                  type: boolean
-                draftToken:
-                  type: string
-                conversation:
-                  type: array
-                ticketId:
-                  type: string
-                ticketAccessToken:
-                  type: string
-                jobId:
-                  type: string
-                accommodation:
-                  type: string
-          audio/*:
-            schema:
-              type: string
-              format: binary
-  /api/v1/voice/actions/sync:
-    post:
-      summary: Sync Voice Actions
-      operationId: sync_voice_actions_api_v1_voice_actions_sync_post
-      requestBody:
-        content:
-          application/json:
-            schema:
-              additionalProperties: true
-              type: object
-              title: Payload
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                additionalProperties: true
-                type: object
-                title: Response Sync Voice Actions Api V1 Voice Actions Sync
-                  Post
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-      description: Idempotently replays queued offline drafts. Expired drafts
-        are rejected; a send action runs only with explicit speech confirmation,
-        consent, and an unexpired signed draft.
 components:
-  responses:
-    RateLimited:
-      description: Too many requests. Wait for the Retry-After duration before
-        trying again.
-      headers:
-        Retry-After:
-          description: Seconds until another request is allowed.
-          schema:
-            type: integer
-        X-Request-ID:
-          description: Correlation ID for support and server logs.
-          schema:
-            type: string
-      content:
-        application/json:
-          schema:
-            type: object
-            properties:
-              detail:
-                type: string
-              requestId:
-                type: string
   schemas:
-    HandoffBrief:
-      type: object
-      required:
-      - version
-      - language
-      - requestedPage
-      - summary
-      - source
-      - reason
-      - evidenceStatus
-      properties:
-        version:
-          type: integer
-          const: 1
-        language:
-          type: string
-          enum: [en, am, om, ti, so, ar]
-        requestedPage:
-          type: string
-        summary:
-          type: string
-          maxLength: 600
-        source:
-          oneOf:
-          - type: object
-            required: [title, url]
-            properties:
-              title:
-                type: string
-              url:
-                type: string
-          - type: 'null'
-        reason:
-          type: string
-          enum: [answer_not_found, learner_requested_person,
-              answer_flagged_incorrect, other]
-        evidenceStatus:
-          type: string
-          enum: [available, unavailable]
-        jobId:
-          type: string
-      additionalProperties: false
-    EscalationCreateRequest:
-      type: object
-      required: [conversation, language, page]
-      properties:
-        conversation:
-          type: array
-          maxItems: 200
-          items:
-            type: object
-            required: [text]
-            properties:
-              role:
-                type: string
-              text:
-                type: string
-                maxLength: 4000
-              answerStatus:
-                type: string
-        language:
-          type: string
-          enum: [en, am, om, ti, so, ar]
-        page:
-          type: string
-          maxLength: 2048
-        handoffReason:
-          type: string
-          enum: [answer_not_found, learner_requested_person,
-              answer_flagged_incorrect, other]
-      additionalProperties: true
-    HelperEscalation:
-      type: object
-      properties:
-        handoffBrief:
-          $ref: '#/components/schemas/HandoffBrief'
-      additionalProperties: true
     HTTPValidationError:
       properties:
         detail:
@@ -904,6 +820,74 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    HandoffBrief:
+      properties:
+        version:
+          type: integer
+          const: 1
+          title: Version
+        language:
+          type: string
+          enum:
+          - en
+          - am
+          - om
+          - ti
+          - so
+          - ar
+          title: Language
+        requestedPage:
+          type: string
+          title: Requestedpage
+        summary:
+          type: string
+          title: Summary
+        source:
+          anyOf:
+          - $ref: '#/components/schemas/HandoffSource'
+          - type: 'null'
+        reason:
+          type: string
+          enum:
+          - answer_not_found
+          - learner_requested_person
+          - answer_flagged_incorrect
+          - other
+          title: Reason
+        evidenceStatus:
+          type: string
+          enum:
+          - available
+          - unavailable
+          title: Evidencestatus
+        jobId:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Jobid
+      type: object
+      required:
+      - version
+      - language
+      - requestedPage
+      - summary
+      - source
+      - reason
+      - evidenceStatus
+      title: HandoffBrief
+    HandoffSource:
+      properties:
+        title:
+          type: string
+          title: Title
+        url:
+          type: string
+          title: Url
+      type: object
+      required:
+      - title
+      - url
+      title: HandoffSource
     ValidationError:
       properties:
         loc:
@@ -930,16 +914,3 @@ components:
       - msg
       - type
       title: ValidationError
-    HandoffSource:
-      properties:
-        title:
-          type: string
-          title: Title
-        url:
-          type: string
-          title: Url
-      type: object
-      required:
-      - title
-      - url
-      title: HandoffSource

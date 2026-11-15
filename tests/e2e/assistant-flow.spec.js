@@ -5,12 +5,15 @@ const sections = JSON.parse(await readFile(new URL("../../demo/data/content.json
 const amharicQuestion = sections[1].text.am;
 
 test("Amharic answer is linked and learners can follow up on a queued tutor request", async ({ page, request }) => {
-  const contentResponse = await request.post("http://127.0.0.1:8001/api/v1/content", { data: sections });
+  const contentResponse = await request.post("/api/v1/content", {
+    headers: { "X-Helper-Token": "e2e-helper-token" },
+    data: sections
+  });
   expect(contentResponse.status()).toBe(200);
   await page.goto("/demo/blank.html");
   const assistant = page.locator("db-assistant");
   await expect(assistant.locator("#launcher")).toBeEnabled();
-  await assistant.evaluate((element) => element.setAttribute("api", "http://127.0.0.1:8001"));
+  await assistant.evaluate((element) => element.setAttribute("lang", "am"));
   await assistant.locator("#launcher").click();
   await assistant.locator("#question").fill(amharicQuestion);
   await assistant.locator("#send").click();
@@ -32,7 +35,7 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
   await expect(assistant.locator("#check-tutor-reply")).toBeVisible();
   await expect(assistant.locator("#tutor-availability")).toContainText(/response times vary/i);
 
-  const ticketUrl = `http://127.0.0.1:8001/api/v1/escalations/${ticketId}/reply`;
+  const ticketUrl = `/api/v1/escalations/${ticketId}/reply`;
   const helperHeaders = { "X-Helper-Token": "e2e-helper-token" };
   const updateResponse = await request.post(ticketUrl, {
     headers: helperHeaders,
@@ -46,7 +49,7 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
   await page.reload();
   const returnedAssistant = page.locator("db-assistant");
   await expect(returnedAssistant.locator("#launcher")).toBeEnabled();
-  await returnedAssistant.evaluate((element) => element.setAttribute("api", "http://127.0.0.1:8001"));
+  await returnedAssistant.evaluate((element) => element.setAttribute("api", location.origin));
   await returnedAssistant.evaluate((element) => element.setAttribute("lang", "en"));
   await expect(returnedAssistant.locator("#language-select")).toHaveValue("en");
   await returnedAssistant.locator("#launcher").click();
@@ -71,7 +74,7 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
     const stored = JSON.parse(localStorage.getItem(`${element._storageKey}:learner-tickets`) || "[]");
     return stored.find((ticket) => ticket.ticketId === element._pendingTutorTicketId) || stored[0];
   });
-  const exportedData = await request.get(`http://127.0.0.1:8001/api/v1/escalations/${ticketId}/data`, {
+  const exportedData = await request.get(`/api/v1/escalations/${ticketId}/data`, {
     headers: { "X-Learner-Token": learnerTicket.accessToken }
   });
   expect(exportedData.status()).toBe(200);
@@ -81,7 +84,7 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
   await returnedAssistant.locator("#delete-ticket-data").click();
   await expect(returnedAssistant.locator("#ticket-data-status")).toContainText("deleted");
   await expect(returnedAssistant.locator("#ticket-data")).toBeHidden();
-  expect((await request.get(`http://127.0.0.1:8001/api/v1/escalations/${ticketId}/data`, {
+  expect((await request.get(`/api/v1/escalations/${ticketId}/data`, {
     headers: { "X-Learner-Token": learnerTicket.accessToken }
   })).status()).toBe(404);
 
@@ -96,7 +99,7 @@ test("accommodation request announces its queued ticket ID", async ({ page, requ
   await page.goto("/demo/blank.html");
   const assistant = page.locator("db-assistant");
   await expect(assistant.locator("#launcher")).toBeEnabled();
-  await assistant.evaluate((element) => element.setAttribute("api", "http://127.0.0.1:8001"));
+  await assistant.evaluate((element) => element.setAttribute("lang", "en"));
   await assistant.locator("#launcher").click();
   await assistant.locator("#accommodation-open").click();
   await expect.poll(() => assistant.locator("#accommodation-job option").count()).toBeGreaterThan(0);
@@ -113,7 +116,7 @@ test("accommodation request announces its queued ticket ID", async ({ page, requ
     await expect(assistant.locator("#accommodation-status")).toContainText(ticketId);
   } finally {
     if (ticketId) {
-      await request.delete(`http://127.0.0.1:8001/api/v1/escalations/${ticketId}`, {
+      await request.delete(`/api/v1/escalations/${ticketId}`, {
         headers: { "X-Helper-Token": "e2e-helper-token" }
       });
     }
@@ -121,15 +124,15 @@ test("accommodation request announces its queued ticket ID", async ({ page, requ
 });
 
 test("helper can send an interim update and later close the same ticket", async ({ page, request }) => {
-  const createResponse = await request.post("http://127.0.0.1:8001/api/v1/escalations", {
+  const createResponse = await request.post("/api/v1/escalations", {
     data: { conversation: [], language: "en", page: "https://example.test/lesson", note: "Follow-up test" }
   });
   expect(createResponse.status()).toBe(201);
   const ticketId = (await createResponse.json()).ticketId;
   const helperHeaders = { "X-Helper-Token": "e2e-helper-token" };
-  const ticketUrl = `http://127.0.0.1:8001/api/v1/escalations/${ticketId}`;
+  const ticketUrl = `/api/v1/escalations/${ticketId}`;
   try {
-    await page.goto("http://127.0.0.1:8001/helper");
+    await page.goto("/helper");
     await page.locator("#token").fill("e2e-helper-token");
     await page.getByRole("button", { name: "Load waiting requests" }).click();
     const ticket = page.locator(".ticket").filter({ hasText: ticketId });

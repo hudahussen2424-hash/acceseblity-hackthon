@@ -77,6 +77,27 @@ test("launcher stays in document flow at compact zoom-like viewport widths", asy
   expect(controlBox.y + controlBox.height).toBeLessThanOrEqual(launcherBox.y);
 });
 
+test("blank-host Bootstrap variables theme the isolated widget", async ({ page }) => {
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => {
+    element.style.setProperty("--bs-primary", "#0047ab");
+    element.style.setProperty("--bs-body-font-family", "Arial, sans-serif");
+    element.style.setProperty("--bs-body-color", "#102030");
+    element.style.setProperty("--bs-body-bg", "#ffffff");
+  });
+  await expect.poll(() => assistant.locator("#launcher").evaluate(
+    (element) => getComputedStyle(element).backgroundColor
+  )).toBe("rgb(0, 71, 171)");
+  const styles = await assistant.evaluate((element) => ({
+    fontFamily: getComputedStyle(element).fontFamily,
+    bodyColor: getComputedStyle(element).color
+  }));
+  expect(styles.fontFamily).toContain("Arial");
+  expect(styles.bodyColor).toBe("rgb(16, 32, 48)");
+});
+
 test("speech recognition fills the question for review without sending it", async ({ page }) => {
   await page.addInitScript(() => {
     class FakeSpeechRecognition {
@@ -146,7 +167,7 @@ test("spoken task sends a reviewed tutor draft without a button and reuses its i
       await route.fulfill({ json: {
         status: "draft", action: "request_tutor", transcript, language: "en",
         answerText: "Review this tutor request, then say send it.",
-        draft: { conversation: [{ role: "user", text: payload.transcript }], language: "en", page: "/demo/blank.html" },
+        draft: { conversation: [{ role: "user", text: "ask a tutor about lesson access" }], language: "en", page: "/demo/blank.html" },
         draftToken: "signed-test-draft"
       } });
       return;
@@ -156,10 +177,17 @@ test("spoken task sends a reviewed tutor draft without a button and reuses its i
                                     language: "en", answerText: "Please consent before sharing." } });
       return;
     }
-    await route.fulfill({ json: {
-      status: "sent", action: "send_tutor_request", transcript, language: "en",
+    await route.abort("failed");
+  });
+  const retries = [];
+  await page.route("**/api/v1/voice/actions/sync", async (route) => {
+    const action = route.request().postDataJSON().actions[0];
+    retries.push(action.idempotencyKey);
+    await route.fulfill({ json: { results: [{
+      id: action.id,
+      status: "sent", action: "send_tutor_request", transcript: "ask a tutor about lesson access", language: "en",
       answerText: "Your tutor request was sent.", ticket: { ticketId: "ticket-123", accessToken: "learner-token" }
-    } });
+    }] } });
   });
 
   await page.goto("/demo/blank.html");
@@ -182,7 +210,9 @@ test("spoken task sends a reviewed tutor draft without a button and reuses its i
   await expect(assistant.locator("#messages")).toContainText("Your tutor request was sent.");
   expect(voiceCalls).toHaveLength(3);
   expect(voiceCalls[2].payload.draftToken).toBe("signed-test-draft");
-  expect(voiceCalls[2].headers["idempotency-key"]).toMatch(/^voice-/);
+  expect(voiceCalls[2].headers["idempotency-key"]).toBeTruthy();
+  await expect.poll(() => retries.length).toBe(1);
+  expect(retries[0]).toBe(voiceCalls[2].headers["idempotency-key"]);
   await expect(assistant.locator("#check-tutor-reply")).toBeVisible();
 });
 
@@ -218,6 +248,7 @@ test("voice guide is shown as text and spoken, and offline voice questions sync 
   await page.goto("/demo/blank.html");
   const assistant = page.locator("db-assistant");
   await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("lang", "en"));
   await assistant.locator("#launcher").click();
   await assistant.locator("#voice-guide").click();
   await expect(assistant.locator("#messages")).toContainText("Ask a lesson question.");

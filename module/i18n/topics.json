@@ -3,5 +3,6 @@
   "am": ["ሕክምና", "ሐኪም", "ምርመራ", "ምልክት", "ሕክምናዊ", "መድኃኒት", "ሕግ", "ጠበቃ", "ፍርድ ቤት", "ኢሚግሬሽን", "ቪዛ", "ጥገኝነት", "መባረር"],
   "ti": ["ሕክምና", "ሓኪም", "መድሃኒት", "ሕጊ", "ጠበቓ", "ቤት ፍርዲ", "ኢሚግሬሽን", "ቪዛ", "ስደተኛ"],
   "om": ["fayyaa", "qoricha", "yaala", "ogeessa fayyaa", "seera", "abukaatoo", "mana murtii", "godaansa", "viizaa", "baqataa"],
-  "so": ["caafimaad", "daawo", "dhakhtar", "sharci", "qareen", "maxkamad", "socdaal", "fiiso", "magangalyo", "masaafurin"]
+  "so": ["caafimaad", "daawo", "dhakhtar", "sharci", "qareen", "maxkamad", "socdaal", "fiiso", "magangalyo", "masaafurin"],
+  "ar": ["صحة", "طبي", "دواء", "طبيب", "تشخيص", "علاج", "قانون", "محام", "محكمة", "هجرة", "تأشيرة", "لجوء", "ترحيل"]
 }

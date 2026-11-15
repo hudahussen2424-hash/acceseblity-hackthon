@@ -37,6 +37,7 @@ test("axe: queued-question controls", async ({ page, context }) => {
   await page.goto("/demo/blank.html");
   const assistant = page.locator("db-assistant");
   await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("lang", "en"));
   await page.waitForFunction(() => document.querySelector("db-assistant")?._sections?.length > 0);
   await assistant.locator("#launcher").click();
   await context.setOffline(true);

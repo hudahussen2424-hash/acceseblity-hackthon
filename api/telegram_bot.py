@@ -11,12 +11,14 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ROOT = Path(__file__).resolve().parent
 JOBS_FILE = PROJECT_ROOT / "demo" / "data" / "jobs.json"
+LOCALE_DIR = PROJECT_ROOT / "module" / "i18n"
 DEFAULT_COURSE_BASE_URL = (
     "https://github.com/hudahussen2424-hash/acceseblity-hackthon/blob/main/"
 )
@@ -179,21 +181,38 @@ def format_answer(result: dict[str, Any], language: str) -> str:
     return f"{answer}\n\nSource: {label}{source_link(source['url'])}"
 
 
-def jobs_reply() -> str:
+@lru_cache(maxsize=6)
+def _locale_strings(language: str) -> dict[str, str]:
+    try:
+        locale = json.loads((LOCALE_DIR / f"{language}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        logger.error("Could not load Telegram locale %s: %s", language, error)
+        return {}
+    strings = locale.get("strings") if isinstance(locale, dict) else None
+    return strings if isinstance(strings, dict) else {}
+
+
+def jobs_reply(language: str = "en") -> str:
+    strings = _locale_strings(language)
     try:
         jobs = json.loads(JOBS_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         logger.warning("Could not load jobs data: %s", error)
-        return "The test jobs list is unavailable right now."
+        return strings.get("jobsListUnavailable", "The test jobs list is unavailable right now.")
     if not isinstance(jobs, list):
         logger.error("Jobs data must be a JSON list.")
-        return "The test jobs list is unavailable right now."
+        return strings.get("jobsListUnavailable", "The test jobs list is unavailable right now.")
+    job_heading = strings.get("jobsListTitle", "Test jobs")
     entries = []
     for job in jobs:
         if not isinstance(job, dict) or not isinstance(job.get("title"), str):
             continue
-        title = job["title"].strip()
-        description = job.get("description", "")
+        translations = job.get("translations")
+        translation = translations.get(language) if isinstance(translations, dict) else None
+        translation = translation if isinstance(translation, dict) else {}
+        localized_title = translation.get("title")
+        title = localized_title.strip() if isinstance(localized_title, str) else job["title"].strip()
+        description = translation.get("description", job.get("description", ""))
         if title:
             entry = f"• {title}"
             employer = job.get("employer")
@@ -203,9 +222,9 @@ def jobs_reply() -> str:
             if isinstance(location, str) and location.strip():
                 entry += f" — {location.strip()}"
             if job.get("remote") is True:
-                entry += " (remote)"
+                entry += f" ({strings.get('jobRemote', 'remote')})"
             elif job.get("remote") is False:
-                entry += " (on-site)"
+                entry += f" ({strings.get('jobOnSite', 'on-site')})"
             if isinstance(description, str) and description.strip():
                 entry += f"\n  {description.strip()}"
             url = job.get("url")
@@ -213,8 +232,8 @@ def jobs_reply() -> str:
                 entry += f"\n  {source_link(url.strip())}"
             entries.append(entry)
     if not entries:
-        return "No test jobs are listed yet."
-    return "Test jobs:\n" + "\n".join(entries[:10])
+        return strings.get("jobsListEmpty", "No test jobs are listed yet.")
+    return f"{job_heading}:\n" + "\n".join(entries[:10])
 
 
 def _person_reply(chat_id: int, language: str, username: str | None) -> str:
@@ -293,7 +312,7 @@ def handle_text(chat_id: int, text: str, username: str | None = None) -> str:
                 return "Use /status followed by the 8-character code from your tutor request."
             return _ticket_status(chat_id, args[0].upper(), language)
         if command == "/jobs":
-            return jobs_reply()
+            return jobs_reply(language)
         if command == "/alerts":
             if len(args) != 1 or args[0].lower() not in {"on", "off"}:
                 return "Use /alerts on or /alerts off."

@@ -117,6 +117,18 @@ test("locale selection returns localized course text and its stable source link"
   await expect(assistant.locator("#language-select")).toHaveValue("ti");
 });
 
+test("Arabic's incomplete translation and English fallbacks are disclosed", async ({ page }) => {
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("lang", "ar"));
+  await expect.poll(() => assistant.evaluate((element) => element._pack?.lang)).toBe("ar");
+  await assistant.locator("#launcher").click();
+
+  await expect(assistant.locator("#locale-status")).toBeVisible();
+  await expect(assistant.locator("#locale-status")).toContainText("غير مكتملة");
+});
+
 test("screen sharing requires consent and an explicit click, then exposes stop and cleans up", async ({ page }) => {
   await installScreenStubs(page);
   await stubScreenTicketApi(page);
@@ -205,16 +217,16 @@ test("Android Chrome uses consented page context and never starts display captur
 
 test("helper inbox receives localized conversation metadata and submits a WebRTC answer", async ({ page, request }) => {
   await installScreenStubs(page);
-  const create = await request.post("http://127.0.0.1:8001/api/v1/escalations", {
+  const create = await request.post("/api/v1/escalations", {
     data: { type: "screen-share", conversation: [{ text: "Tigrinya request", lang: "ti" }], language: "ti", page: "https://example.test/lesson", note: "" }
   });
   expect(create.status()).toBe(201);
   const ticketId = (await create.json()).ticketId;
-  const signalUrl = `http://127.0.0.1:8001/api/v1/escalations/${ticketId}/signal`;
+  const signalUrl = `/api/v1/escalations/${ticketId}/signal`;
   const helperHeaders = { "X-Helper-Token": "e2e-helper-token" };
   await request.post(signalUrl, { data: { type: "offer", sdp: "test-offer" } });
   try {
-    await page.goto("http://127.0.0.1:8001/helper");
+    await page.goto("/helper");
     await page.locator("#token").fill("e2e-helper-token");
     await page.getByRole("button", { name: "Load waiting requests" }).click();
     const ticket = page.locator(".ticket").filter({ hasText: ticketId });
@@ -231,6 +243,6 @@ test("helper inbox receives localized conversation metadata and submits a WebRTC
     });
     await expect(ticket.locator(".screen-demo")).toContainText("Connection interrupted");
   } finally {
-    await request.delete(`http://127.0.0.1:8001/api/v1/escalations/${ticketId}`, { headers: helperHeaders });
+    await request.delete(`/api/v1/escalations/${ticketId}`, { headers: helperHeaders });
   }
 });

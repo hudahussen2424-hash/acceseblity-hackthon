@@ -7,6 +7,7 @@
     "remote": true,
     "description": "Practice sorting a sample inbox, flagging urgent messages, and drafting short replies for review.",
     "translations": {
+      "am": {"title": "የመልዕክት ሳጥን ድጋፍ ረዳት (ሙከራ)", "description": "የሙከራ መልዕክቶችን በምድብ አስቀምጥ፣ አስቸኳይ መልዕክቶችን ምልክት አድርግ፣ እና እንዲገመገሙ አጭር ምላሾችን አዘጋጅ።", "accommodations": ["ለቃለ መጠይቅ አስተርጓሚ", "ተለዋዋጭ የሥራ ሰዓት"], "remoteLabel": "ከርቀት የሚሠራ"},
       "ti": {"title": "ሓጋዚ ምምሕዳር ኢመይል (ፈተነ)", "description": "ናሙና ኢንቦክስ ምድባ፡ ኣገዳሲ መልእኽትታት ምልካይን ንምግምጋም ሓጸርቲ መልስታት ምድላውን ተለማመድ።", "accommodations": ["ኣብ ቃለ መሕትት ተርጓሚ", "ተለዋዋጢ ሰዓታት"]},
       "om": {"title": "Gargaaraa Sanduuqa Ergaa (YAALII)", "description": "Sanduuqa ergaa fakkeenyaa ramaduu, ergaawwan ariifachiisoo mallatteessuu fi deebii gabaabaa qormaataaf barreessuu shaakali.", "accommodations": ["Hiikkaa afaanii yeroo gaafannoo hojii", "Sa'aatii hojii jijjiiramaa"]},
       "so": {"title": "Kaaliyaha Sanduuqa Farriimaha (Tijaabo)", "description": "Ku tababar kala saaridda sanduuq farriimo tusaale ah, calaamadinta farriimaha degdegga ah iyo diyaarinta jawaabo gaagaaban oo dib loo eego.", "accommodations": ["Turjubaan wareysiga", "Saacado dabacsan"]}
@@ -22,6 +23,7 @@
     "remote": false,
     "description": "Clean a practice spreadsheet by checking dates, removing duplicate sample rows, and labeling columns.",
     "translations": {
+      "am": {"title": "የስፕሬድሺት ረዳት (ሙከራ)", "description": "የሙከራ ስፕሬድሺትን ቀኖችን በመፈተሽ፣ የተደጋገሙ ረድፎችን በማስወገድ እና ዓምዶችን በመሰየም አጽዳ።", "accommodations": ["ከስክሪን አንባቢ ጋር የሚሰሩ መሣሪያዎች", "ተለዋዋጭ የሥራ ሰዓት"], "remoteLabel": "በቦታው የሚሠራ"},
       "ti": {"title": "ሓጋዚ ሰንጠረዥ (ፈተነ)", "description": "ኣብ ሰንጠረዥ ልምምድ ዕለታት ብምርግጋጽ፡ ተደጋገምቲ ናሙና ረድፍታት ብምእላይን ዓምድታት ብምስያምን ኣጽርዮ።", "accommodations": ["ንስክሪን ኣንባቢ ዝሰርሑ መሳርሒታት", "ተለዋዋጢ ሰዓታት"]},
       "om": {"title": "Gargaaraa Gabatee (YAALII)", "description": "Guyyaa mirkaneessuun, tarreewwan fakkeenyaa irra deddeebi'an haquun fi tarree gabatee maqaa itti kennuun gabatee shaakalaa qulqulleessi.", "accommodations": ["Meeshaalee dubbisaa iskiriinii waliin hojjetan", "Sa'aatii hojii jijjiiramaa"]},
       "so": {"title": "Kaaliyaha Xaashida Xisaabta (Tijaabo)", "description": "Nadiifi xaashi tusaale ah adigoo hubinaya taariikhaha, saaraya safafka tusaalaha ee soo noqnoqda, una samaynaya tiirar magacyo.", "accommodations": ["Qalab ku habboon akhristaha shaashadda", "Saacado dabacsan"]}
@@ -37,6 +39,7 @@
     "remote": true,
     "description": "Organize a sample weekly calendar and prepare clear meeting reminders using a practice schedule.",
     "translations": {
+      "am": {"title": "የቀን መቁጠሪያ አስተባባሪ (ሙከራ)", "description": "የሙከራ ሳምንታዊ የቀን መቁጠሪያን አደራጅ እና የሙከራ መርሃ ግብርን ተጠቅመህ ግልጽ የስብሰባ ማስታወሻዎችን አዘጋጅ።", "accommodations": ["ለቃለ መጠይቅ አስተርጓሚ", "ለቃለ መጠይቅ ተጨማሪ ጊዜ"], "remoteLabel": "ከርቀት የሚሠራ"},
       "ti": {"title": "ወሃዲ ካላንደር (ፈተነ)", "description": "ናሙና ሰሙናዊ ካላንደር ኣዳሉ፡ ኣብ ልምምድ መደብ ተመርኲስካ ንጹር መዘኻኸሪ ኣኼባ ኣዳሉ።", "accommodations": ["ኣብ ቃለ መሕትት ተርጓሚ", "ንስራሕ ቃለ መሕትት ተወሳኺ ግዜ"]},
       "om": {"title": "Qindeessaa Kalandarii (YAALII)", "description": "Kalandarii torbee fakkeenyaa qindeessi, sagantaa shaakalaa fayyadamuun yaadachiisa walga'ii ifa ta'e qopheessi.", "accommodations": ["Hiikkaa afaanii yeroo gaafannoo hojii", "Yeroo dabalataa hojii gaafannoo hojjechuuf"]},
       "so": {"title": "Isku-duwaha Jadwalka (Tijaabo)", "description": "Habee jadwal toddobaadle ah oo tusaale ah, kuna diyaari xusuusinno kulan oo cad adigoo adeegsanaya jadwal tababar.", "accommodations": ["Turjubaan wareysiga", "Waqti dheeraad ah oo hawlaha wareysiga ah"]}
@@ -52,6 +55,7 @@
     "remote": true,
     "description": "Sort example customer questions and write polite draft replies from a short information sheet.",
     "translations": {
+      "am": {"title": "የደንበኛ ምላሽ ረዳት (ሙከራ)", "description": "የምሳሌ ደንበኛ ጥያቄዎችን በምድብ አስቀምጥ፣ ከአጭር የመረጃ ወረቀት ጨዋ ረቂቅ ምላሾችን ጻፍ።", "accommodations": ["ከስክሪን አንባቢ ጋር የሚሰሩ መሣሪያዎች", "ለቃለ መጠይቅ አስተርጓሚ"], "remoteLabel": "ከርቀት የሚሠራ"},
       "ti": {"title": "ሓጋዚ መልሲ ዓሚል (ፈተነ)", "description": "ናሙና ሕቶታት ዓማዊል ምድብ፡ ካብ ሓጺር ሓበሬታ ብኣኽብሮት ዝተጻሕፉ መልስታት ኣዳሉ።", "accommodations": ["ንስክሪን ኣንባቢ ዝሰርሑ መሳርሒታት", "ኣብ ቃለ መሕትት ተርጓሚ"]},
       "om": {"title": "Gargaaraa Deebii Maamilaa (YAALII)", "description": "Gaaffilee maamilaa fakkeenyaa ramadi, waraqaa odeeffannoo gabaabaa irraa deebii kabajaa qabu barreessi.", "accommodations": ["Meeshaalee dubbisaa iskiriinii waliin hojjetan", "Hiikkaa afaanii yeroo gaafannoo hojii"]},
       "so": {"title": "Kaaliyaha Jawaabaha Macaamiisha (Tijaabo)", "description": "Kala saar su'aalaha macaamiisha tusaalaha ah oo ka qor jawaabo edeb leh xaashi xog gaaban.", "accommodations": ["Qalab ku habboon akhristaha shaashadda", "Turjubaan wareysiga"]}
@@ -67,6 +71,7 @@
     "remote": false,
     "description": "Put supplied public practice links into a table and summarize each source in one plain sentence.",
     "translations": {
+      "am": {"title": "የምርምር አደራጅ (ሙከራ)", "description": "የተሰጡትን የህዝብ ሙከራ አገናኞች በሰንጠረዥ ውስጥ አስገባ እና እያንዳንዱን ምንጭ በአንድ ቀላል ዓረፍተ ነገር አጠቃልል።", "accommodations": ["ተለዋዋጭ የሥራ ሰዓት", "የቃለ መጠይቅ ጥያቄዎች በጽሑፍ"], "remoteLabel": "በቦታው የሚሠራ"},
       "ti": {"title": "ኣዳላዊ ምርምር (ፈተነ)", "description": "ዝተዋህቡ ህዝባዊ መላግቦታት ልምምድ ኣብ ሰንጠረዥ ኣእቱ፡ ንነፍሲ ወከፍ ምንጪ ብሓደ ቀሊል ሓረግ ጠቓልል።", "accommodations": ["ተለዋዋጢ ሰዓታት", "ብጽሑፍ ዝቐርቡ ሕቶታት ቃለ መሕትት"]},
       "om": {"title": "Qindeessaa Qorannoo (YAALII)", "description": "Geessituuwwan shaakalaa ummataaf dhiyaatan gabatee keessa kaa'i, madda tokkoon tokkoon isaa hima salphaan gabaabsi.", "accommodations": ["Sa'aatii hojii jijjiiramaa", "Gaaffilee hojii barreeffamaan dhiyaatan"]},
       "so": {"title": "Abaabulaha Cilmi-baarista (Tijaabo)", "description": "Geli xiriirrada tababarka ee dadweynaha la siiyey miis, kuna soo koob il kasta hal jumlad oo fudud.", "accommodations": ["Saacado dabacsan", "Su'aalaha wareysiga oo qoraal ah"]}
@@ -82,6 +87,7 @@
     "remote": true,
     "description": "Review sample web copy for missing headings, unclear sentences, and simple spelling mistakes.",
     "translations": {
+      "am": {"title": "የይዘት አረጋጋጭ (ሙከራ)", "description": "የምሳሌ ድረ-ገጽ ጽሑፍን ርዕሶች መጥፋታቸውን፣ ዓረፍተ ነገሮች ግልጽ አለመሆናቸውን እና ቀላል የፊደል ስህተቶችን ለመፈተሽ ገምግም።", "accommodations": ["ከስክሪን አንባቢ ጋር የሚሰሩ መሣሪያዎች", "ለቃለ መጠይቅ ተጨማሪ ጊዜ"], "remoteLabel": "ከርቀት የሚሠራ"},
       "ti": {"title": "መርማሪ ትሕዝቶ (ፈተነ)", "description": "ኣብ ናሙና ጽሑፍ ዌብ ዝጎደሉ ርእስታት፡ ዘይንጹር ሓረጋትን ቀለልቲ ጌጋታት ኣጸሓሕፋን ፈትሽ።", "accommodations": ["ንስክሪን ኣንባቢ ዝሰርሑ መሳርሒታት", "ንስራሕ ቃለ መሕትት ተወሳኺ ግዜ"]},
       "om": {"title": "Mirkaneessaa Qabiyyee (YAALII)", "description": "Barruu weeb fakkeenyaa mata-duree dhabame, hima hin ifne fi dogoggora qubeessuu salphaa qabu qoradhu.", "accommodations": ["Meeshaalee dubbisaa iskiriinii waliin hojjetan", "Yeroo dabalataa hojii gaafannoo hojjechuuf"]},
       "so": {"title": "Hubiyaha Nuxurka (Tijaabo)", "description": "Dib u eeg qoraal web tusaale ah si aad u ogaato cinwaanno maqan, jumlado aan caddayn iyo khaladaad higgaad fudud.", "accommodations": ["Qalab ku habboon akhristaha shaashadda", "Waqti dheeraad ah oo hawlaha wareysiga ah"]}
@@ -97,6 +103,7 @@
     "remote": false,
     "description": "Turn a practice meeting transcript into a short list of decisions, tasks, and due dates.",
     "translations": {
+      "am": {"title": "የፕሮጀክት ማስታወሻ ረዳት (ሙከራ)", "description": "የሙከራ ስብሰባ ጽሑፍን ወደ አጭር የውሳኔዎች፣ የሥራዎች እና የማለቂያ ቀኖች ዝርዝር ቀይር።", "accommodations": ["ለቃለ መጠይቅ አስተርጓሚ", "ተለዋዋጭ የሥራ ሰዓት", "የቃለ መጠይቅ ጥያቄዎች በጽሑፍ"], "remoteLabel": "በቦታው የሚሠራ"},
       "ti": {"title": "ሓጋዚ መዘኻኸሪ ፕሮጀክት (ፈተነ)", "description": "ጽሑፍ ልምምድ ኣኼባ ናብ ሓጺር ዝርዝር ውሳነታት፡ ዕማማትን ዕለታት ምውዳእን ቀይሮ።", "accommodations": ["ኣብ ቃለ መሕትት ተርጓሚ", "ተለዋዋጢ ሰዓታት", "ብጽሑፍ ዝቐርቡ ሕቶታት ቃለ መሕትት"]},
       "om": {"title": "Gargaaraa Yaadannoo Pirojektii (YAALII)", "description": "Barruu walga'ii shaakalaa irraa murtiiwwan, hojiiwwan fi guyyaa xumuraa tarree gabaabaa qopheessi.", "accommodations": ["Hiikkaa afaanii yeroo gaafannoo hojii", "Sa'aatii hojii jijjiiramaa", "Gaaffilee hojii barreeffamaan dhiyaatan"]},
       "so": {"title": "Kaaliyaha Qoraallada Mashruuca (Tijaabo)", "description": "Qoraalka kulan tababar u beddel liis gaaban oo go'aanno, hawlo iyo taariikho dhammaad ah.", "accommodations": ["Turjubaan wareysiga", "Saacado dabacsan", "Su'aalaha wareysiga oo qoraal ah"]}
@@ -112,6 +119,7 @@
     "remote": true,
     "description": "Arrange a set of practice documents into named folders and write a clear index for the sample files.",
     "translations": {
+      "am": {"title": "የዲጂታል ፋይል አደራጅ (ሙከራ)", "description": "የሙከራ ሰነዶችን በተሰየሙ አቃፊዎች ውስጥ አደራጅ እና ለምሳሌ ፋይሎቹ ግልጽ ማውጫ ጻፍ።", "accommodations": ["ከስክሪን አንባቢ ጋር የሚሰሩ መሣሪያዎች", "ተለዋዋጭ የሥራ ሰዓት"], "remoteLabel": "ከርቀት የሚሠራ"},
       "ti": {"title": "ኣዳላዊ ዲጂታላዊ ፋይል (ፈተነ)", "description": "ናሙና ሰነዳት ኣብ ስሞም ዝተሰየሙ ፎልደራት ኣዳሉ፡ ንናሙና ፋይላት ንጹር መዝገብ ጽሓፍ።", "accommodations": ["ንስክሪን ኣንባቢ ዝሰርሑ መሳርሒታት", "ተለዋዋጢ ሰዓታት"]},
       "om": {"title": "Qindeessaa Faayilii Dijitaalaa (YAALII)", "description": "Galmeewwan shaakalaa galmee maqaa qabu keessatti qindeessi, faayilota fakkeenyaatiif tarree ifa ta'e barreessi.", "accommodations": ["Meeshaalee dubbisaa iskiriinii waliin hojjetan", "Sa'aatii hojii jijjiiramaa"]},
       "so": {"title": "Abaabulaha Faylasha Dijitaalka ah (Tijaabo)", "description": "Ku hagaaji dukumentiyo tababar galal magac leh, una qor tusmo cad oo faylasha tusaalaha ah.", "accommodations": ["Qalab ku habboon akhristaha shaashadda", "Saacado dabacsan"]}

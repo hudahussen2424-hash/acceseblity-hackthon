@@ -90,6 +90,11 @@ def export_openapi():
         text = dump_yaml_fallback(schema)
         output_path.write_text(text, encoding="utf-8")
 
+    rendered = output_path.read_text(encoding="utf-8")
+    output_path.write_text(
+        "\n".join(line.rstrip() for line in rendered.splitlines()) + "\n",
+        encoding="utf-8",
+    )
     print(f"Successfully exported OpenAPI schema to {output_path}")
 
 

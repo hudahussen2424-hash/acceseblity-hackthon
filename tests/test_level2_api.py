@@ -92,14 +92,21 @@ def test_helper_endpoints_fail_closed_when_secret_is_not_configured(client, monk
     assert response.status_code == 503
 
 
-def test_content_endpoints(client):
+def test_content_endpoints(client, monkeypatch):
+    monkeypatch.setenv("HELPER_TOKEN", "")
     # GET initial content
     get_res = client.get("/api/v1/content")
     assert get_res.status_code == 200
     assert isinstance(get_res.json(), list)
 
+    # Content indexing is helper-only.
+    assert client.post("/api/v1/content", json=[]).status_code == 503
+    assert client.post("/api/v1/content", json=[]).status_code == 503
+    monkeypatch.setenv("HELPER_TOKEN", "content-helper")
+    headers = {"X-Helper-Token": "content-helper"}
+    assert client.post("/api/v1/content", json=[]).status_code == 401
     # POST invalid content -> 400
-    bad_res = client.post("/api/v1/content", json="not a list")
+    bad_res = client.post("/api/v1/content", json="not a list", headers=headers)
     assert bad_res.status_code == 400
 
     # POST valid content -> 200
@@ -109,9 +116,11 @@ def test_content_endpoints(client):
         "url": "/lesson#test",
         "text": {"en": "Section body in English.", "am": "የሙከራ ክፍል ይዘት"},
     }]
-    post_res = client.post("/api/v1/content", json=new_sections)
+    post_res = client.post("/api/v1/content", json=new_sections, headers=headers)
     assert post_res.status_code == 200
     assert post_res.json()["indexed"] == 1
+    content_operation = client.get("/openapi.json").json()["paths"]["/api/v1/content"]["post"]
+    assert any(item["name"] == "x-helper-token" for item in content_operation["parameters"])
 
 
 def test_initialize_replaces_marker_bearing_seed_content():
@@ -199,12 +208,28 @@ def test_ask_returns_localized_course_answer_and_source_title(client, monkeypatc
     assert result["sources"] == [{"title": section["titles"][language], "url": section["url"], "type": "lesson"}]
 
 
-def test_indexed_jobs_include_localized_titles_and_text():
+def test_ask_returns_a_job_listing_as_a_cited_source(client, monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "none")
+    response = client.post(
+        "/api/v1/ask",
+        json={"question": "Inbox Support Assistant", "language": "en"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answerStatus"] == "answered"
+    assert response.json()["sources"][0]["type"] == "job"
+    assert response.json()["sources"][0]["url"].endswith("#test-inbox-support")
+
+
+@pytest.mark.parametrize("language", ["am", "ti", "om", "so"])
+def test_indexed_jobs_include_localized_titles_and_text(language):
     from api.main import indexed_sections
 
-    job = next(item for item in indexed_sections() if item.get("id") == "test-inbox-support")
-    assert job["titles"]["ti"] == job["translations"]["ti"]["title"]
-    assert job["translations"]["ti"]["description"] in job["text"]["ti"]
+    jobs = [item for item in indexed_sections() if item.get("type") == "job"]
+    assert len(jobs) == 8
+    for job in jobs:
+        assert job["titles"][language] == job["translations"][language]["title"]
+        assert job["translations"][language]["description"] in job["text"][language]
 
 
 def test_cloud_provider_requires_explicit_learner_consent(client, monkeypatch):

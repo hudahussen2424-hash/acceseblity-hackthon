@@ -131,6 +131,17 @@ This component supports:
 
 The `<db-assistant>` component accepts `lang`, `api`, `content`, `theme`, and `debug` attributes. The `lang` attribute uses a locale file in `module/i18n/`; `api` is the API base URL; `content` optionally points to host-provided course JSON; `theme` accepts `light` or `dark`; `debug` enables retrieval-score details. The component dispatches bubbling, composed `db-assistant:ready`, `db-assistant:open`, `db-assistant:close`, `db-assistant:question`, `db-assistant:person`, `db-assistant:escalated`, and `db-assistant:error` events. `db-assistant:question` includes `{ text, language, input }`; `input` is `text` or `voice`. `db-assistant:escalated` includes `ticketId` and, for accommodation requests, `type`.
 
+The `content` attribute is a browser-side source for local retrieval; the component does **not** upload that file to the backend. The API indexes its seeded `demo/data/content.json` at startup. To provision a host's content into the backend index, provide a valid JSON section array and upload it from a trusted deployment/operator environment using the helper token:
+
+```bash
+curl -X POST "$API/api/v1/content" \
+  -H "X-Helper-Token: $HELPER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data-binary @content.json
+```
+
+Do not expose the helper token in learner-facing HTML or JavaScript. An unauthenticated or invalid-token write returns 401; indexing is disabled with 503 when `HELPER_TOKEN` is not configured.
+
 The blank-host proof is [demo/blank.html](./demo/blank.html). It contains only one external script tag and no Savanna or Bootstrap CSS. The component loads its search helper and locale resources relative to that script. It uses a shadow root for its UI styling and emits events instead of changing host page styles.
 
 ## API
@@ -202,7 +213,7 @@ FEEDBACK_ID=replace-with-feedback-id
 
 curl -H "X-Helper-Token: $HELPER_TOKEN" "$API/api/v1/helper/metrics"
 curl -H "X-Helper-Token: $HELPER_TOKEN" "$API/api/v1/helper/content-health"
-curl -X POST "$API/api/v1/content" -H 'Content-Type: application/json' -d '{"sections":[{"id":"demo-1","title":"Demo lesson","url":"/lesson#demo-1","text":{"en":"A test lesson sentence."}}]}'
+curl -X POST "$API/api/v1/content" -H "X-Helper-Token: $HELPER_TOKEN" -H 'Content-Type: application/json' -d '[{"id":"demo-1","title":"Demo lesson","url":"/lesson#demo-1","text":{"en":"A test lesson sentence."}}]'
 curl "$API/api/v1/content"
 curl "$API/api/v1/voice/guide?language=en"
 curl "$API/api/v1/voice/capabilities"
@@ -304,16 +315,19 @@ npm run test:e2e
 npm run test:axe
 ```
 
+Playwright starts the FastAPI app as its web server so demo pages and `/api/v1` share an origin. `E2E_PORT` selects the local port (default `18010`); `E2E_DB_PATH` overrides the process-specific temporary SQLite test database.
+
 These checks provide local integration evidence for the project, but they are not a substitute for live user testing, accessibility review on real devices, or production deployment validation.
 
-### Verification record — 2026-11-16
+### Verification record — 2026-11-17
 
-- `npm run build:module`, `npm run check:module-size`, and `npm test` completed successfully. The search suite passed all 37 tests; the generated bundle is 26.52 KB gzipped.
-- `python -m pytest -q tests/test_qa.py tests/test_sms.py tests/test_telegram_bot.py tests/test_level2_api.py tests/test_voice_offline.py` passed all 86 tests. Pytest reported one Starlette/httpx deprecation warning.
-- `docker compose config --quiet` completed successfully. Docker could not connect to the Docker Desktop Linux engine pipe, so the containers and clean-machine startup were not tested.
-- `npm run test:e2e -- --workers=1 --reporter=line` did not reach the browser tests: Playwright timed out probing `127.0.0.1:8000/demo/blank.html`. A direct Python HTTP server probe also hit an OS socket access-denied error on loopback. No axe result is claimed.
-- The Slow 3G script was attempted, but the local server could not be reached and the script's `npx` Lighthouse invocation did not complete. No Lighthouse timing result is claimed.
-- The jobs page emits a JSON-LD graph for its test listings. Its existing browser test checks that listing titles and URLs match the source data, but the browser test did not run here. The graph omits guide example fields `datePosted` and `employmentType`, and uses an unstructured place name instead of a postal address, so full Schema.org completeness is not claimed.
+- `npm.cmd run build:module` and `npm.cmd run check:module-size` completed successfully. The generated `module/db-assistant.min.js` bundle is 20.59 KB gzipped (21,089 bytes).
+- `npm.cmd test` passed all 37 JavaScript tests.
+- `python -m pytest -q` passed all 111 Python tests. Pytest reported one Starlette/httpx deprecation warning. Python syntax checks passed for `api/main.py`, `api/telegram_bot.py`, and `scripts/build_content.py`.
+- The full Playwright run used `E2E_PORT=18026` and a temporary SQLite database: `npm.cmd run test:e2e -- --reporter=line` passed all 33 tests. This included all five axe scenarios, which found no critical or serious violations; the queued-question case reached axe analysis. E2E uses the API app as its web server, offline integrations, a test-only helper token, and a temporary database.
+- `docker compose config --quiet` completed successfully. `docker info` could not connect to `npipe:////./pipe/dockerDesktopLinuxEngine` because the Docker Desktop Linux engine pipe was missing; no container runtime check passed.
+- The Slow 3G script was attempted against `demo/blank.html` on a reachable local API server. PowerShell rejected the script with `PSSecurityException` because script execution is disabled; Lighthouse did not run and no load/FCP measurement is claimed.
+- The browser test checked that JobPosting JSON-LD matches rendered listing data. The graph omits guide example fields `datePosted` and `employmentType` and uses an unstructured place name instead of a postal address, so full Schema.org completeness is not claimed.
 
 ## Accessibility and privacy notes
 
@@ -335,7 +349,7 @@ For real deployment, treat the repository as a foundation rather than a producti
 
 ## Languages and adding a locale
 
-The component currently has locale packs for English, Amharic, Tigrinya, Afaan Oromo, Somali, and Arabic. To add a language, add `module/i18n/<code>.json`, add the language option to the selector in `module/db-assistant.js`, add the locale to `SUPPORTED_LANGUAGES` and the localized answer/voice guide dictionaries in the API, and provide translated course/job data. For right-to-left languages set `dir: "rtl"` and use logical CSS properties. A fluent speaker should review every label, error, guide step, answer, and voice phrase before describing a locale as complete. See [TRANSLATION_REVIEW.md](./TRANSLATION_REVIEW.md) for current coverage and sign-off fields. The non-English translations still need fluent-speaker review.
+The component currently has locale packs for English, Amharic, Tigrinya, Afaan Oromo, Somali, and Arabic. Adding a supported language still requires updating the selector and API language declarations as well as `module/i18n/<code>.json` and translated course/job data; adding only the JSON file is not yet supported. For right-to-left languages set `dir: "rtl"` and use logical CSS properties. A fluent speaker should review every label, error, guide step, answer, and voice phrase before describing a locale as complete. See [TRANSLATION_REVIEW.md](./TRANSLATION_REVIEW.md) for current coverage and sign-off fields. The non-English translations still need fluent-speaker review.
 
 ## Offline behavior, data, and privacy
 
@@ -348,15 +362,15 @@ The component currently has locale packs for English, Amharic, Tigrinya, Afaan O
 
 ## Performance, costs, and libraries
 
-- **Bundle size:** Built with `npm run build:module`; measured by `npm run check:module-size` as **26.52 KB gzipped (27,157 bytes)** on 2026-11-16. This is the generated `module/db-assistant.min.js` bundle.
-- **Slow 3G:** Not measured. The attempt on 2026-11-16 could not reach the local static server at `127.0.0.1:8000`. Run `scripts/measure-slow3g.ps1` against `demo/blank.html` in an environment where the local server is reachable; then record observed load time and First Contentful Paint.
+- **Bundle size:** Built with `npm.cmd run build:module`; measured by `npm.cmd run check:module-size` as **20.59 KB gzipped (21,089 bytes)** on 2026-11-17. This is the generated `module/db-assistant.min.js` bundle.
+- **Slow 3G:** Not measured. On 2026-11-17, the local API server was reachable, but PowerShell blocked `scripts/measure-slow3g.ps1` with `PSSecurityException` because script execution is disabled. Run the script in an environment that permits it; then record observed load time, First Contentful Paint, method, and date.
 - **Rough cost for 3,000 learners:** With an institution-provided host, local open-source inference, and external SMS/AI disabled, the software/API subscription cost is approximately **$0 per month**. This excludes the host's hardware, electricity, internet, operations, and any optional paid messaging. No load test or concurrency profile for 3,000 learners has been completed, so infrastructure cost and capacity need a measured deployment profile before launch.
 - **Direct runtime dependencies and licenses:** FastAPI (MIT), Uvicorn (BSD-3-Clause), cryptography (Apache-2.0 OR BSD-3-Clause), HTTPX (BSD-3-Clause), and ruamel.yaml (MIT). Browser/test tooling: `@axe-core/playwright` (MPL-2.0), `@playwright/test` (Apache-2.0), and Terser (BSD-2-Clause). The lock files identify exact versions; review transitive package, base-image, and any separately provisioned speech-model licenses before redistribution.
 
 ## Current completion status
 
-- **Implemented:** Track 3 assistant and helper flows, career/job content, versioned API/OpenAPI, backend voice guide and local command processing, consented/idempotent tutor voice sends, local offline queues, and a blank-host embed demo. The jobs page emits JobPosting JSON-LD, but its full schema completeness and runtime output have not been verified; treat Level 3 as partial.
-- **Not yet evidenced:** Co-designer accessibility gate, axe zero-serious result for the final revision, actual 200% browser zoom and assistive-technology testing, physical-device voice/model coverage, fluent-speaker review of all locales, screen-share interoperability on real networks, clean-machine Docker Compose run, runtime JobPosting JSON-LD check, Slow 3G measurement, and 3,000-learner load/cost validation. The Compose file parses successfully, but the Docker daemon was unavailable for a runtime check.
+- **Implemented:** Track 3 assistant and helper flows, career/job content, versioned API/OpenAPI, backend voice guide and local command processing, consented/idempotent tutor voice sends, local offline queues, and a blank-host embed demo. All five automated axe scenarios passed with no critical or serious violations; this is not a human accessibility gate. JobPosting JSON-LD matches rendered listing data in the browser test, but its full schema completeness is unverified; treat Level 3 as partial.
+- **Not yet evidenced:** Co-designer accessibility gate, actual 200% browser zoom and assistive-technology testing, physical-device voice/model coverage, fluent-speaker review of all locales, screen-share interoperability on real networks, Docker runtime/clean-machine startup, Slow 3G measurement, and 3,000-learner load/cost validation. The Compose file parses successfully, but the Docker daemon was unavailable for a runtime check.
 - **Voice models:** No Vosk/Piper model files are bundled or installed in this checkout. Text transcript mode works without them; raw-audio transcription and generated guide audio require local models and FFmpeg.
 - **Team input still required:** Team/co-designer identifiers, agreed main-task sentence, exact ALX-selected open-source license, co-designer test record, model choices/licenses, and actual performance/cost measurements.
 

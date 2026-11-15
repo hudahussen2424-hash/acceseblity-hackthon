@@ -78,7 +78,7 @@ class LessonHTMLParser(HTMLParser):
         self._save_current_section()
 
 
-def build_content(html_path: Path, output_path: Path, preserve_am: bool = True):
+def build_content(html_path: Path, output_path: Path):
     if not html_path.exists():
         raise FileNotFoundError(f"Input HTML file not found: {html_path}")
 
@@ -87,17 +87,15 @@ def build_content(html_path: Path, output_path: Path, preserve_am: bool = True):
     parser.feed(raw_html)
     parser.close()
 
-    # If output file already exists and has Amharic translations, optionally keep them
-    existing_am = {}
-    if preserve_am and output_path.exists():
+    existing_sections = {}
+    if output_path.exists():
         try:
             old_data = json.loads(output_path.read_text(encoding="utf-8"))
             if isinstance(old_data, list):
                 for item in old_data:
-                    am_text = item.get("text", {}).get("am", "")
-                    if am_text and "TODO" not in am_text:
-                        existing_am[item.get("id")] = am_text
-        except Exception:
+                    if isinstance(item, dict) and isinstance(item.get("id"), str):
+                        existing_sections[item["id"]] = item
+        except (OSError, ValueError, TypeError):
             pass
 
     results = []
@@ -107,16 +105,28 @@ def build_content(html_path: Path, output_path: Path, preserve_am: bool = True):
         sec = parser.sections.get(anchor, {})
         title = sec.get("title", anchor.replace("-", " ").title())
         body_en = sec.get("text", "")
-        body_am = existing_am.get(anchor, "TODO: Translate to Amharic")
+        previous = existing_sections.get(anchor, {})
+        previous_text = previous.get("text", {})
+        previous_titles = previous.get("titles", {})
+        localized_text = {"en": body_en}
+        localized_titles = {"en": title}
+        if isinstance(previous_text, dict):
+            localized_text.update({
+                language: value for language, value in previous_text.items()
+                if language != "en" and isinstance(value, str) and value.strip()
+            })
+        if isinstance(previous_titles, dict):
+            localized_titles.update({
+                language: value for language, value in previous_titles.items()
+                if language != "en" and isinstance(value, str) and value.strip()
+            })
 
         results.append({
             "id": anchor,
             "title": title,
             "url": f"{base_url}#{anchor}",
-            "text": {
-                "en": body_en,
-                "am": body_am
-            }
+            "titles": localized_titles,
+            "text": localized_text
         })
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

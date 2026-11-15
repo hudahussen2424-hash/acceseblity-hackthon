@@ -18,6 +18,7 @@ import urllib.parse
 import urllib.request
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
@@ -108,6 +109,26 @@ DB_PATH = Path(os.getenv("ESCALATIONS_DB", ROOT / "escalations.sqlite3"))
 
 def offline_mode() -> bool:
     return os.getenv("OFFLINE_MODE", "true").strip().lower() not in {"0", "false", "no", "off"}
+
+
+@lru_cache(maxsize=1)
+def _amharic_api_messages() -> dict[str, str]:
+    path = ROOT.parent / "module" / "i18n" / "am.json"
+    try:
+        pack = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        logger.error("Could not load Amharic API messages: %s", error)
+        return {}
+    messages = pack.get("api") if isinstance(pack, dict) else None
+    return messages if isinstance(messages, dict) else {}
+
+
+def api_message(language: str, key: str, default: str) -> str:
+    if language != "am":
+        return default
+    translated = _amharic_api_messages().get(key)
+    return translated if isinstance(translated, str) and translated else default
+
 
 app = FastAPI(
     title="Learning Assistant & Course Escalations API",
@@ -746,8 +767,9 @@ def helper_auth(token: str | None) -> None:
         raise HTTPException(status_code=401, detail="Enter a valid helper token.")
 
 
-def plain_bad(message: str) -> None:
-    raise HTTPException(status_code=400, detail=message)
+def plain_bad(message: str, language: str = "en", key: str | None = None) -> None:
+    detail = api_message(language, key, message) if key else message
+    raise HTTPException(status_code=400, detail=detail)
 
 
 def notify_webhook(ticket_id: str, at: str | None = None) -> None:
@@ -795,27 +817,17 @@ def indexed_sections() -> list[dict[str, Any]]:
         jobs = []
     if isinstance(jobs, list):
         known = {item.get("id") for item in sections if isinstance(item, dict)}
-        job_modes = {
-            "ti": ("ርሑቕ ስራሕ", "ኣብ ቦታ ስራሕ"),
-            "om": ("Hojii fagoo", "Bakka hojii irratti"),
-            "so": ("Shaqo fog", "Goobta shaqada"),
-        }
         for job in jobs:
             if not isinstance(job, dict) or job.get("id") in known:
                 continue
             accommodations = job.get("accommodations", [])
-            english_details = [
-                job.get("description", ""),
-                "remote work" if job.get("remote") else "on site",
-                job.get("location", ""),
-                *accommodations,
-            ]
+            english_details = [job.get("description", ""), job.get("location", ""), *accommodations]
             titles = {"en": job.get("title", ""), "am": job.get("title", "")}
             text = {
                 "en": ". ".join(str(value) for value in english_details if value),
                 "am": ". ".join(str(value) for value in english_details if value),
             }
-            for language, (remote_label, on_site_label) in job_modes.items():
+            for language in ("am", "ti", "om", "so"):
                 translations = job.get("translations")
                 translation = translations.get(language) if isinstance(translations, dict) else None
                 if not isinstance(translation, dict) or not translation.get("description"):
@@ -823,7 +835,6 @@ def indexed_sections() -> list[dict[str, Any]]:
                 titles[language] = translation.get("title", "")
                 details = [
                     translation["description"],
-                    remote_label if job.get("remote") else on_site_label,
                     job.get("location", ""),
                     *(translation.get("accommodations") or []),
                 ]
@@ -993,7 +1004,11 @@ def save_escalation_record(
 
 
 @app.post("/api/v1/content")
-async def index_content(request: Request) -> dict[str, int]:
+async def index_content(
+    request: Request,
+    x_helper_token: str | None = Header(default=None),
+) -> dict[str, int]:
+    helper_auth(x_helper_token)
     try:
         payload = await request.json()
     except Exception:
@@ -1158,19 +1173,20 @@ async def _voice_command(payload: dict[str, Any], idempotency_key: str | None = 
     allowed_fields = {"transcript", "language", "confidence", "shareConsent", "conversation", "page", "draftToken",
                       "ticketId", "ticketAccessToken", "jobId", "accommodation", "idempotencyKey", "expiresAt", "id"}
     if set(payload) - allowed_fields:
-        plain_bad("Voice command contains unsupported fields.")
+        plain_bad("Voice command contains unsupported fields.", payload.get("language", "en"), "error_voice_unsupported_fields")
     language = payload.get("language", "en")
     if language not in VOICE_LANGUAGES:
         plain_bad("Language must be en, am, om, ti, so, or ar.")
     transcript = payload.get("transcript")
     confidence = payload.get("confidence", 1.0)
     if not isinstance(transcript, str) or not transcript.strip() or len(transcript) > 4000:
-        plain_bad("Provide a transcript of 1 to 4000 characters.")
+        plain_bad("Provide a transcript of 1 to 4000 characters.", language, "error_voice_transcript")
     if not isinstance(confidence, (int, float)) or confidence < 0 or confidence > 1:
-        plain_bad("Confidence must be between 0 and 1.")
+        plain_bad("Confidence must be between 0 and 1.", language, "error_voice_confidence")
     if confidence < 0.45:
         return {"status": "clarification_required", "transcript": transcript.strip(), "language": language,
-                "action": "clarify", "answerText": "I could not understand that clearly. Please repeat or edit the request."}
+                "action": "clarify", "answerText": api_message(language, "voice_low_confidence",
+                    "I could not understand that clearly. Please repeat or edit the request.")}
     classified = classify_command(transcript, language)
     action = classified["action"]
     result: dict[str, Any] = {"status": "processed", "transcript": transcript.strip(), "language": language,
@@ -1181,37 +1197,46 @@ async def _voice_command(payload: dict[str, Any], idempotency_key: str | None = 
         return {**result, "answerText": guide["text"], "guide": guide}
     if action == "client_action_required":
         return {**result, "status": "client_action_required", "clientAction": classified["clientAction"],
-                "answerText": "Screen sharing must be started and approved in your browser."}
+                "answerText": api_message(language, "voice_screen_share",
+                    "Screen sharing must be started and approved in your browser.")}
     if action == "external_service_required":
-        return {**result, "status": "unavailable_offline", "answerText": "Alerts need an external messaging service and are unavailable in offline mode."}
+        return {**result, "status": "unavailable_offline", "answerText": api_message(language, "voice_alerts_offline",
+            "Alerts need an external messaging service and are unavailable in offline mode.")}
     if action == "check_tutor_reply":
         ticket_id, token = payload.get("ticketId"), payload.get("ticketAccessToken")
         if not isinstance(ticket_id, str) or not isinstance(token, str):
-            return {**result, "status": "clarification_required", "answerText": "Provide the tutor ticket and its learner access token to check status."}
+            return {**result, "status": "clarification_required", "answerText": api_message(language, "voice_ticket_credentials",
+                "Provide the tutor ticket and its learner access token to check status.")}
         try:
             ticket = get_escalation(ticket_id, token)
         except HTTPException:
-            return {**result, "status": "not_found", "answerText": "I could not find that tutor request."}
-        return {**result, "answerText": f"Tutor request status: {ticket['status']}." + (f" Tutor reply: {ticket['reply']}" if ticket.get("reply") else ""),
+            return {**result, "status": "not_found", "answerText": api_message(language, "voice_ticket_not_found",
+                "I could not find that tutor request.")}
+        status_text = api_message(language, "voice_ticket_status", "Tutor request status")
+        reply_text = api_message(language, "voice_tutor_reply", "Tutor reply")
+        return {**result, "answerText": f"{status_text}: {ticket['status']}." + (f" {reply_text}: {ticket['reply']}" if ticket.get("reply") else ""),
                 "ticket": ticket}
     if action in {"request_tutor", "request_accommodation"}:
         if payload.get("shareConsent") is not True:
-            return {**result, "status": "consent_required", "answerText": "Please explicitly consent to share this conversation with a tutor."}
+            return {**result, "status": "consent_required", "answerText": api_message(language, "voice_consent",
+                "Please explicitly consent to share this conversation with a tutor.")}
         conversation = payload.get("conversation", [])
         if not isinstance(conversation, list) or len(conversation) > 20:
-            plain_bad("Conversation must contain up to 20 messages.")
+            plain_bad("Conversation must contain up to 20 messages.", language, "error_voice_conversation")
         if any(not isinstance(m, dict) or m.get("role") not in {"user", "assistant"} or not isinstance(m.get("text"), str) or len(m["text"]) > 4000 for m in conversation):
-            plain_bad("Conversation messages must have a user/assistant role and short text.")
+            plain_bad("Conversation messages must have a user/assistant role and short text.",
+                language, "error_voice_conversation_messages")
         page = payload.get("page", "/")
         if not isinstance(page, str) or len(page) > 2048 or not page:
-            plain_bad("Page must be a short non-empty string.")
+            plain_bad("Page must be a short non-empty string.", language, "error_voice_page")
         page = _handoff_page(page)
         ticket_type = "person"
         job_id = accommodation = None
         if action == "request_accommodation":
             job_id, accommodation = payload.get("jobId"), payload.get("accommodation")
             if not isinstance(job_id, str) or not job_id.strip() or not isinstance(accommodation, str) or not accommodation.strip():
-                return {**result, "status": "clarification_required", "answerText": "Choose the job and describe the accommodation before preparing the request."}
+                return {**result, "status": "clarification_required", "answerText": api_message(language, "voice_accommodation_details",
+                    "Choose the job and describe the accommodation before preparing the request.")}
             ticket_type = "accommodation"
         if not conversation or conversation[-1].get("text") != classified["query"]:
             conversation = [*conversation, {"role": "user", "text": classified["query"]}]
@@ -1221,41 +1246,50 @@ async def _voice_command(payload: dict[str, Any], idempotency_key: str | None = 
         if classified["confirmed"]:
             token = payload.get("draftToken")
             if not isinstance(token, str):
-                return {**result, "status": "clarification_required", "answerText": "Prepare and review this tutor request before saying ‘send it’."}
+                return {**result, "status": "clarification_required", "answerText": api_message(language, "voice_draft_required",
+                    "Prepare and review this tutor request before saying ‘send it’.")}
             prepared, prior_send = _read_confirmed_draft(token, idempotency_key)
             if any(prepared.get(key) != draft.get(key) for key in ("conversation", "language", "page", "consent", "type", "jobId", "accommodation")):
-                return {**result, "status": "draft_changed", "answerText": "This is not the reviewed tutor request. Prepare and confirm it again."}
+                return {**result, "status": "draft_changed", "answerText": api_message(language, "voice_draft_changed",
+                    "This is not the reviewed tutor request. Prepare and confirm it again.")}
             if not idempotency_key:
                 raise HTTPException(status_code=400, detail="Spoken send requires an Idempotency-Key.")
             sent = prior_send or _submit_voice_tutor_request(prepared, idempotency_key)
             return {**result, "action": "send_tutor_request", "status": "sent", "confirmed": True,
-                    "answerText": sent["message"], "ticket": sent}
+                    "answerText": api_message(language, "voice_request_sent", sent["message"]), "ticket": sent}
         return {**result, "status": "draft", "draft": {"conversation": conversation, "language": language,
                                                                "page": page, "type": ticket_type,
                                                                "jobId": job_id, "accommodation": accommodation},
-                "draftToken": _voice_draft_token(draft), "answerText": "Review this tutor request, then say ‘send it’ to submit."}
+                "draftToken": _voice_draft_token(draft), "answerText": api_message(language, "voice_review_draft",
+                    "Review this tutor request, then say ‘send it’ to submit.")}
     if classified["confirmed"]:
         token = payload.get("draftToken")
         if not isinstance(token, str):
-            return {**result, "status": "clarification_required", "answerText": "There is no prepared request to send."}
+            return {**result, "status": "clarification_required", "answerText": api_message(language, "voice_draft_missing",
+                "There is no prepared request to send.")}
         if payload.get("shareConsent") is not True:
-            return {**result, "status": "consent_required", "answerText": "Explicit consent is required before sharing with a tutor."}
+            return {**result, "status": "consent_required", "answerText": api_message(language, "voice_consent_required",
+                "Explicit consent is required before sharing with a tutor.")}
         draft, prior_send = _read_confirmed_draft(token, idempotency_key)
         if draft.get("consent") is not True:
-            return {**result, "status": "consent_required", "answerText": "Explicit consent is required before sharing with a tutor."}
+            return {**result, "status": "consent_required", "answerText": api_message(language, "voice_consent_required",
+                "Explicit consent is required before sharing with a tutor.")}
         if payload.get("conversation") is not None and payload["conversation"] != draft["conversation"]:
-            return {**result, "status": "draft_changed", "answerText": "The request changed after review. Prepare and confirm it again."}
+            return {**result, "status": "draft_changed", "answerText": api_message(language, "voice_draft_changed",
+                "The request changed after review. Prepare and confirm it again.")}
         for key in ("page", "language", "jobId", "accommodation"):
             if key in payload and payload[key] != draft.get(key):
-                return {**result, "status": "draft_changed", "answerText": "The request details changed after review. Prepare and confirm it again."}
+                return {**result, "status": "draft_changed", "answerText": api_message(language, "voice_draft_changed",
+                    "The request details changed after review. Prepare and confirm it again.")}
         if not idempotency_key:
             raise HTTPException(status_code=400, detail="Spoken send requires an Idempotency-Key.")
         sent = prior_send or _submit_voice_tutor_request(draft, idempotency_key)
         return {**result, "action": "send_tutor_request", "status": "sent", "confirmed": True,
-                "answerText": sent["message"], "ticket": sent}
+                "answerText": api_message(language, "voice_request_sent", sent["message"]), "ticket": sent}
     query = classified["query"]
     if len(query.strip()) < 3:
-        return {**result, "status": "clarification_required", "answerText": "Please repeat the lesson or job question."}
+        return {**result, "status": "clarification_required", "answerText": api_message(language, "voice_question_too_short",
+            "Please repeat the lesson or job question.")}
     answer = await answer_question(query, language, indexed_sections(), allow_cloud=False, offline_only=True)
     return {**result, "answerText": answer["answer"], "sources": answer["sources"], "grounding": answer["grounding"]}
 
@@ -1298,7 +1332,8 @@ async def post_voice_command(request: Request, idempotency_key: str | None = Hea
         if language not in VOICE_LANGUAGES:
             plain_bad("Language must be en, am, om, ti, so, or ar.")
         if request.query_params.get("cloudConsent") == "true":
-            return {"status": "cloud_disabled", "action": "transcribe", "answerText": "Cloud speech processing is disabled in offline-only mode."}
+            return {"status": "cloud_disabled", "action": "transcribe", "answerText": api_message(language,
+                "voice_cloud_disabled", "Cloud speech processing is disabled in offline-only mode.")}
         recognized = await run_in_threadpool(local_provider().transcribe, audio, language)
         return await _voice_command({"transcript": recognized["transcript"], "confidence": recognized["confidence"], "language": language}, idempotency_key)
     raise HTTPException(status_code=415, detail="Send JSON transcript input or an audio/* recording.")

@@ -162,6 +162,7 @@ def test_new_languages_return_localized_no_match_without_provider_fallback(langu
     ("Gorsa fayyaa naaf kenni", "om"),
     ("Talo caafimaad i sii", "so"),
     ("ምኽሪ ሕጊ ሃበኒ", "ti"),
+    ("أريد نصيحة قانونية", "ar"),
 ])
 def test_new_languages_use_localized_sensitive_topic_refusal(question, language):
     provider = FakeProvider({"text": "unsafe generated answer"})

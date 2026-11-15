@@ -11,275 +11,9 @@
     return "";
   }
 
-  const en = {
-    lang: "en",
-    dir: "ltr",
-    strings: {
-      launcher: "Open learning assistant",
-      dialogTitle: "Learning assistant",
-      close: "Close",
-      greeting: "Ask a question about this lesson. The answer comes from the lesson text.",
-      questionLabel: "Your question",
-      questionPlaceholder: "Ask about this lesson",
-      cloudConsent: "Optional: if checked, your question and matched course section may be sent to this site's configured cloud AI. If unchecked, course search is used.",
-      ask: "Send",
-      errorEmpty: "Enter a question before sending.",
-      person: "Talk to a person",
-      language: "Language",
-      you: "You",
-      assistant: "Assistant",
-      tutor: "Tutor",
-      notFound: "I could not find this in the course",
-      readInCourse: "Read in the course",
-      microphone: "Use microphone",
-      voiceCommand: "Speak a task",
-      voiceGuide: "How to use this assistant",
-      voiceCommandListening: "Listening for a task. Ask a lesson or job question, request tutor help, or say ‘send it’ after reviewing a tutor draft.",
-      voiceCommandQueued: "Saved on this phone. It will be processed when you are online. Tutor sends still need a valid draft and clear confirmation.",
-      voiceCommandConsent: "To share this conversation, open Talk to a person, check the consent box, then repeat your tutor request.",
-      voiceCommandFailed: "I could not process that voice request. You can type the request instead.",
-      voiceCommandClarify: "I could not understand that clearly. Please repeat or type the request.",
-      voiceCommandGuideFailed: "The usage guide is unavailable. Please check your connection and try again.",
-      stop: "Stop",
-      listening: "Listening with speech recognition. Review the words before sending.",
-      stopped: "Listening stopped.",
-      recording: "Recording a voice note for a tutor. It will not be sent to the assistant.",
-      recordedReady: "Voice note ready. It will only be sent to a tutor.",
-      speechAdded: "Speech added to your question. Review it before sending.",
-      voiceUnavailable: "Speech recognition failed and voice recording is unavailable.",
-      speechLimitations: "Speech recognition and voices depend on your browser, device, and selected language. Review recognized words before sending.",
-      readBack: "Read it back",
-      listen: "Listen",
-      noAmharicVoice: "No Amharic voice on this phone",
-      escalationNote: "Optional note",
-      consent: "Share this conversation with a tutor",
-      sendEscalation: "Send to a person",
-      voiceNote: "Voice note for tutor",
-      escalationSent: "Your request is queued. Tutors may be unavailable, including at 23:00. Response times vary and are not guaranteed. Return here and choose Check for tutor reply.",
-      ticketReference: "Ticket ID: {ticketId}.",
-      tutorAvailability: "Tutors may be unavailable, including at 23:00. Requests are queued, but response times vary and are not guaranteed. Return here and choose Check for tutor reply.",
-      checkTutorReply: "Check for tutor reply",
-      checkingTutorReply: "Checking for a tutor reply…",
-      tutorReplyPending: "No reply yet. Your request is still waiting. Check again later.",
-      tutorUpdateAvailable: "A tutor sent an update. Your request is still open; check again later for a final reply.",
-      tutorReplyAvailable: "A tutor replied. The response is shown in this chat.",
-      checkTutorReplyFailed: "Could not check for a tutor reply. Check your connection and try again.",
-      ticketDataTitle: "Your tutor requests",
-      ticketDataLabel: "Choose a request",
-      exportTicketData: "Export request data",
-      deleteTicketData: "Delete request data",
-      ticketDataFailed: "Could not manage this request. Check your connection and try again.",
-      ticketDataDeleted: "Request data deleted.",
-      ticketDataDeleteConfirm: "Permanently delete this tutor request and its attachments?",
-      ticketDataNote: "This browser stores a private ticket key for export and deletion. Keep this browser data private.",
-      clearLocalData: "Clear this device's assistant data",
-      clearLocalDataConfirm: "Clear local chat history, queued questions, cached lesson data, and saved ticket keys from this browser? This does not delete server tickets.",
-      clearLocalDataDone: "Local assistant data cleared. Server tickets are unchanged unless you delete them above.",
-      clearLocalDataFailed: "Could not clear this browser's assistant data. Use the browser's site-data controls.",
-      escalationFailed: "Your request could not be sent. Check your connection and try again.",
-      offlineSaved: "Saved on this phone. It will send when you are online.",
-      questionSendFailed: "The assistant could not accept this question. Review it and try again.",
-      offlineQueueTitle: "Questions waiting to send",
-      offlineQueueWaiting: "Waiting for a connection.",
-      offlineQueueRetrying: "Sending this question…",
-      offlineQueueRetryFailed: "Could not send this question. It is still queued; check your connection and retry.",
-      offlineQueueSaved: "Question updated.",
-      offlineQueueSent: "Queued question sent.",
-      offlineQueueStorageFailed: "This question could not be saved on this device. Keep this page open and try again when connected.",
-      offlineQueueEdit: "Edit",
-      offlineQueueEditLabel: "Edit queued question",
-      offlineQueueSave: "Save",
-      offlineQueueCancel: "Cancel",
-      offlineQueueRetry: "Retry",
-      offlineQueueRemove: "Remove",
-      cachedAnswerEvidence: "Answer from course content available offline; it may be out of date.",
-      notFoundEvidence: "No matching answer was found in the course content.",
-      feedbackUnhelpful: "Flag as unhelpful",
-      feedbackIncorrect: "Flag as incorrect",
-      feedbackSent: "Thanks. Your feedback was sent without your question text.",
-      feedbackFailed: "Feedback could not be sent. Check your connection and try again.",
-      saveForReview: "Save to study pack",
-      removeFromReview: "Remove from study pack",
-      studyPackTitle: "My offline study pack",
-      studyPackEmpty: "Save a useful answer to review it later, even offline.",
-      studyPackExport: "Download study pack",
-      studyPackSaved: "Saved for offline review.",
-      studyPackRemoved: "Removed from study pack.",
-      phoneLabel: "Phone number (optional)",
-      phoneInvalid: "Enter an Ethiopian number starting with 09, 07, +2519, or +2517.",
-      accommodationButton: "I need an accommodation for my interview",
-      accommodationPrivacy: "Your accommodation choices and note go only to a tutor. They are never shared with an employer.",
-      whichJob: "Which test job is your interview for?",
-      whichAccommodation: "What accommodation would help?",
-      jobRemote: "Remote",
-      jobOnSite: "On-site",
-      jobAccommodations: "Accommodations",
-      otherAccommodation: "Other (describe it in the note)",
-      accommodationNote: "Optional note",
-      sendAccommodation: "Ask a tutor about this accommodation",
-      accommodationSent: "Your request was sent privately to a tutor.",
-      accommodationFailed: "Your request could not be sent. Please try again.",
-      screenShareConsent: "I consent to sharing my screen or page details with a tutor. Sharing starts only after I press a button. Live video is not recorded or stored. Page sharing sends this page URL, the focused element's accessible name and HTML, page headings, and only a screenshot I select; these are attached to a tutor request.",
-      screenShareTitle: "Share with a tutor",
-      screenShareNote: "Use HTTPS for screen capture. Desktop uses direct demo WebRTC with no configured STUN/TURN relay, so some networks may block it. On Android Chrome, live screen sharing is unavailable; you can share page details and optionally upload a screenshot instead.",
-      screenShareStart: "Share my screen",
-      screenContextStart: "Show my tutor where I am",
-      screenScreenshot: "Optional screenshot (image)",
-      screenShareOn: "You are sharing your screen",
-      screenShareStop: "Stop sharing",
-      screenShareConsentRequired: "Please consent before sharing.",
-      screenShareStarting: "Requesting screen access…",
-      screenShareConnecting: "Waiting for the tutor to connect (demo transport).",
-      screenShareConnected: "Connected to the tutor. Live video is not recorded.",
-      screenShareStopped: "Screen sharing stopped.",
-      screenShareCancelled: "Screen sharing was cancelled.",
-      screenSharePermissionDenied: "Screen access was not allowed. Check your browser permissions.",
-      screenShareDisconnected: "The screen connection was lost. You can still stop sharing.",
-      screenShareError: "Screen sharing could not start. Please try again.",
-      screenContextSent: "Page details were sent to the tutor. This did not share your live screen.",
-      screenContextFailed: "Page details could not be sent. Please try again.",
-      screenShareCleanupFailed: "Screen sharing stopped, but demo signaling could not be cleared.",
-      screenScreenshotTooLarge: "Choose an image smaller than 3 MB.",
-      translationUnavailable: "This translation could not be loaded. English is being shown.",
-      describeOther: "Describe the accommodation you need in the note."
-    }
-  };
-
-  const am = {
-    lang: "am",
-    dir: "ltr",
-    strings: {
-      launcher: "የትምህርት ረዳትን ክፈት",
-      dialogTitle: "የትምህርት ረዳት",
-      close: "ዝጋ",
-      greeting: "ስለዚህ ትምህርት ጥያቄ ይጠይቁ። መልሱ ከትምህርቱ ጽሑፍ ይመጣል።",
-      questionLabel: "ጥያቄዎ",
-      questionPlaceholder: "ስለ ትምህርቱ ይጠይቁ",
-      ask: "ላክ",
-      errorEmpty: "ከመላክዎ በፊት ጥያቄ ያስገቡ።",
-      person: "ከሰው ጋር ይነጋገሩ",
-      language: "ቋንቋ",
-      you: "እርስዎ",
-      assistant: "ረዳት",
-      tutor: "አስተማሪ",
-      notFound: "ይህንን በትምህርቱ ውስጥ ማግኘት አልቻልኩም",
-      readInCourse: "በትምህርቱ ውስጥ ያንብቡ",
-      microphone: "ማይክሮፎን ተጠቀም",
-      voiceCommand: "ተግባርዎን በድምፅ ይናገሩ",
-      voiceGuide: "ይህን ረዳት እንዴት መጠቀም እንደሚቻል",
-      voiceCommandListening: "ተግባርዎን እያዳመጥኩ ነው። ስለ ትምህርት ወይም ሥራ ይጠይቁ፣ አስተማሪ ይጠይቁ፣ ወይም የተዘጋጀውን ጥያቄ ከገመገሙ በኋላ “ላክ” ይበሉ።",
-      voiceCommandQueued: "በዚህ ስልክ ላይ ተቀምጧል። ኢንተርኔት ሲኖር ይሰራል። ለአስተማሪ መላክ ግልጽ ማረጋገጫ ይፈልጋል።",
-      voiceCommandConsent: "ይህን ውይይት ለማጋራት፣ ከሰው ጋር ይነጋገሩን ይክፈቱ፣ የፈቃድ ሳጥኑን ይምረጡ፣ ከዚያ ጥያቄዎን እንደገና ይናገሩ።",
-      voiceCommandFailed: "የድምፅ ጥያቄውን ማስኬድ አልቻልኩም። በጽሑፍ መጻፍ ይችላሉ።",
-      voiceCommandClarify: "ግልጽ በሆነ መንገድ ልረዳ አልቻልኩም። እባክዎ ይድገሙ ወይም ይጻፉ።",
-      voiceCommandGuideFailed: "የአጠቃቀም መመሪያው አልተገኘም። ግንኙነትዎን ይፈትሹና እንደገና ይሞክሩ።",
-      stop: "አቁም",
-      listening: "በድምፅ ማወቂያ እያዳመጥኩ ነው። ከመላክዎ በፊት ቃላቱን ይመልከቱ።",
-      stopped: "ማዳመጥ ቆሟል።",
-      recording: "ለአስተማሪ የድምፅ መልዕክት እየቀዳሁ ነው። ወደ ረዳቱ አይላክም።",
-      recordedReady: "የድምፅ መልዕክቱ ዝግጁ ነው። ለአስተማሪ ብቻ ይላካል።",
-      speechAdded: "የተነገረው ወደ ጥያቄዎ ተጨምሯል። ከመላክዎ በፊት ይመልከቱ።",
-      voiceUnavailable: "የድምፅ ማወቂያና ቀረጻ በዚህ ስልክ ላይ አይገኙም።",
-      speechLimitations: "የድምፅ ማወቂያና ድምፆች በአሳሹ፣ በመሣሪያውና በተመረጠው ቋንቋ ላይ ይመረኮዛሉ። ከመላክዎ በፊት የተገነዘቡትን ቃላት ይመልከቱ።",
-      readBack: "መልሰህ አንብብ",
-      listen: "አዳምጥ",
-      noAmharicVoice: "በዚህ ስልክ ላይ የአማርኛ ድምፅ የለም",
-      escalationNote: "አማራጭ ማስታወሻ",
-      consent: "ይህን ውይይት ለአስተማሪ ያጋሩ",
-      sendEscalation: "ለሰው ላክ",
-      voiceNote: "ለአስተማሪ የድምፅ መልዕክት",
-      cloudConsent: "አማራጭ፦ ከተመረጠ ጥያቄዎና የተዛመደው የትምህርት ክፍል በዚህ ጣቢያ ወደተዋቀረው የደመና AI ሊላኩ ይችላሉ። ካልተመረጠ የትምህርት ፍለጋ ይጠቀማል።",
-      escalationSent: "ጥያቄዎ በወረፋ ላይ ተቀምጧል። አስተማሪዎች በ23:00 ላይም ላይገኙ ይችላሉ። የምላሽ ጊዜ ይለያያል እና ዋስትና የለውም። ተመልሰው እዚህ ይምጡና የአስተማሪ ምላሽን ይፈትሹ።",
-      ticketReference: "የጥያቄ መለያ፦ {ticketId}።",
-      tutorAvailability: "አስተማሪዎች በ23:00 ላይም ላይገኙ ይችላሉ። ጥያቄዎች በወረፋ ይቀመጣሉ፤ የምላሽ ጊዜ ይለያያል እና ዋስትና የለውም። ተመልሰው እዚህ ይምጡና የአስተማሪ ምላሽን ይፈትሹ።",
-      checkTutorReply: "የአስተማሪ ምላሽ ይፈትሹ",
-      checkingTutorReply: "የአስተማሪ ምላሽ በመፈተሽ ላይ…",
-      tutorReplyPending: "እስካሁን ምላሽ የለም። ጥያቄዎ በመጠባበቅ ላይ ነው። ቆይተው እንደገና ይፈትሹ።",
-      tutorUpdateAvailable: "አስተማሪ የሁኔታ መረጃ ልኳል። ጥያቄዎ ክፍት ነው፤ የመጨረሻ ምላሽ በኋላ እንደገና ይፈትሹ።",
-      tutorReplyAvailable: "አስተማሪ መልሷል። ምላሹ በዚህ ውይይት ውስጥ ይታያል።",
-      checkTutorReplyFailed: "የአስተማሪን ምላሽ መፈተሽ አልተቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
-      ticketDataTitle: "የእርስዎ የአስተማሪ ጥያቄዎች",
-      ticketDataLabel: "ጥያቄ ይምረጡ",
-      exportTicketData: "የጥያቄ መረጃን ያውርዱ",
-      deleteTicketData: "የጥያቄ መረጃን ይሰርዙ",
-      ticketDataFailed: "ይህን ጥያቄ ማስተዳደር አልተቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
-      ticketDataDeleted: "የጥያቄው መረጃ ተሰርዟል።",
-      ticketDataDeleteConfirm: "ይህን የአስተማሪ ጥያቄና አባሪዎቹን በቋሚነት ይሰርዙ?",
-      ticketDataNote: "ይህ አሳሽ ለማውረድና ለመሰረዝ የግል ቁልፍ ያስቀምጣል። የአሳሹን መረጃ በግል ይጠብቁ።",
-      clearLocalData: "በዚህ መሣሪያ ያለውን የረዳት መረጃ አጽዳ",
-      clearLocalDataConfirm: "የውይይት ታሪክን፣ የተጠባባቂ ጥያቄዎችን፣ የተቀመጠ የትምህርት መረጃንና የጥያቄ ቁልፎችን ከዚህ አሳሽ ያጽዱ? ይህ በአገልጋዩ ያሉ ጥያቄዎችን አይሰርዝም።",
-      clearLocalDataDone: "በአሳሹ ያለው የረዳት መረጃ ተጽድቷል። ከላይ ካልሰረዙ በስተቀር የአገልጋይ ጥያቄዎች አልተሰረዙም።",
-      clearLocalDataFailed: "በዚህ አሳሽ ያለውን የረዳት መረጃ ማጽዳት አልተቻለም። የአሳሹን የጣቢያ መረጃ ቁጥጥሮች ይጠቀሙ።",
-      escalationFailed: "ጥያቄዎ ሊላክ አልቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
-      offlineSaved: "በዚህ ስልክ ተቀምጧል። ኢንተርኔት ሲኖር ይላካል።",
-      questionSendFailed: "ረዳቱ ይህን ጥያቄ መቀበል አልቻለም። ጥያቄዎን ይመልከቱና እንደገና ይሞክሩ።",
-      offlineQueueTitle: "ለመላክ የሚጠባበቁ ጥያቄዎች",
-      offlineQueueWaiting: "ግንኙነት በመጠበቅ ላይ።",
-      offlineQueueRetrying: "ይህ ጥያቄ በመላክ ላይ ነው…",
-      offlineQueueRetryFailed: "ጥያቄውን መላክ አልተቻለም። በወረፋ ላይ ይቆያል፤ ግንኙነቱን ያረጋግጡና ይሞክሩ።",
-      offlineQueueSaved: "ጥያቄው ተዘምኗል።",
-      offlineQueueSent: "በወረፋ ያለው ጥያቄ ተልኳል።",
-      offlineQueueStorageFailed: "ጥያቄውን በዚህ መሣሪያ ላይ ማስቀመጥ አልተቻለም። ይህን ገጽ ክፍት ያድርጉና ግንኙነት ሲኖር እንደገና ይሞክሩ።",
-      offlineQueueEdit: "አርትዕ",
-      offlineQueueEditLabel: "በወረፋ ያለውን ጥያቄ ያርትዑ",
-      offlineQueueSave: "አስቀምጥ",
-      offlineQueueCancel: "ሰርዝ",
-      offlineQueueRetry: "እንደገና ላክ",
-      offlineQueueRemove: "አስወግድ",
-      cachedAnswerEvidence: "መልሱ ከከመስመር ውጭ ከሚገኝ የትምህርት ይዘት ነው፤ ያልዘመነ ሊሆን ይችላል።",
-      notFoundEvidence: "በትምህርቱ ይዘት ውስጥ የሚዛመድ መልስ አልተገኘም።",
-      feedbackUnhelpful: "ጠቃሚ እንዳልሆነ ምልክት ያድርጉ",
-      feedbackIncorrect: "ትክክል እንዳልሆነ ምልክት ያድርጉ",
-      feedbackSent: "እናመሰግናለን። ጥያቄዎን ሳናካትት አስተያየትዎ ተልኳል።",
-      feedbackFailed: "አስተያየት መላክ አልተቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
-      saveForReview: "ለጥናት ያስቀምጡ",
-      removeFromReview: "ከጥናት ማስታወሻ ያስወግዱ",
-      studyPackTitle: "የእኔ ከመስመር ውጭ የጥናት ማስታወሻ",
-      studyPackEmpty: "በኋላ ለመከለስ ጠቃሚ መልስ ያስቀምጡ።",
-      studyPackExport: "የጥናት ማስታወሻን ያውርዱ",
-      studyPackSaved: "ከመስመር ውጭ ለመከለስ ተቀምጧል።",
-      studyPackRemoved: "ከጥናት ማስታወሻ ተወግዷል።",
-      phoneLabel: "የስልክ ቁጥር (አማራጭ)",
-      phoneInvalid: "ትክክለኛ የኢትዮጵያ ስልክ ቁጥር ያስገቡ።",
-      accommodationButton: "ለቃለ መጠይቄ ማስተካከያ እፈልጋለሁ",
-      accommodationPrivacy: "የመረጡት ማስተካከያና ማስታወሻ ለአስተማሪ ብቻ ይሄዳሉ። ለቀጣሪ አይጋሩም።",
-      whichJob: "ቃለ መጠይቅዎ ለየትኛው የሙከራ ሥራ ነው?",
-      whichAccommodation: "ምን ማስተካከያ ይረዳዎታል?",
-      jobRemote: "ከሩቅ",
-      jobOnSite: "በሥራ ቦታ",
-      jobAccommodations: "ማስተካከያዎች",
-      otherAccommodation: "ሌላ (በማስታወሻ ይግለጹ)",
-      accommodationNote: "አማራጭ ማስታወሻ",
-      sendAccommodation: "ስለዚህ ማስተካከያ አስተማሪን ይጠይቁ",
-      accommodationSent: "ጥያቄዎ በግል ለአስተማሪ ተልኳል።",
-      accommodationFailed: "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።",
-      screenShareConsent: "ማያዬን ወይም የገጹን መረጃ ለአስተማሪ ለማጋራት እስማማለሁ። ማጋራት የሚጀምረው አዝራሩን ከጫንኩ ብቻ ነው። ቀጥታ ቪዲዮ አይቀዳም ወይም አይቀመጥም። የገጽ ማጋራት የገጹን URL፣ የተመረጠውን አባል ተደራሽ ስምና HTML፣ የገጹን ርዕሶችና እኔ የመረጥኩትን ምስል ብቻ ይልካል፤ እነዚህም ከአስተማሪ ጥያቄ ጋር ይያያዛሉ።",
-      screenShareTitle: "ከአስተማሪ ጋር አጋራ",
-      screenShareNote: "የማያ ማጋራት ለመጠቀም HTTPS ያስፈልጋል። ዴስክቶፕ ቀጥታ የሙከራ WebRTC ግንኙነት ይጠቀማል፤ STUN/TURN ማስተላለፊያ ስላልተዋቀረ አንዳንድ ኔትወርኮች ሊከለክሉት ይችላሉ። በAndroid Chrome ቀጥታ የማያ ማጋራት አይገኝም፤ በምትኩ የገጹን መረጃ ማጋራትና ከፈለጉ የማያ ምስል መጫን ይችላሉ።",
-      screenShareStart: "ማያዬን አጋራ",
-      screenContextStart: "ያለሁበትን ለአስተማሪ አሳይ",
-      screenScreenshot: "አማራጭ የማያ ምስል",
-      screenShareOn: "ማያዎን እያጋሩ ነው",
-      screenShareStop: "ማጋራትን አቁም",
-      screenShareConsentRequired: "ከማጋራትዎ በፊት ፈቃድዎን ይስጡ።",
-      screenShareStarting: "የማያ ፈቃድ በመጠየቅ ላይ…",
-      screenShareConnecting: "አስተማሪው እስኪገናኝ በመጠበቅ ላይ (የሙከራ ማስተላለፊያ)።",
-      screenShareConnected: "ከአስተማሪው ጋር ተገናኝቷል። ቀጥታ ቪዲዮ አይቀዳም።",
-      screenShareStopped: "የማያ ማጋራት ቆሟል።",
-      screenShareCancelled: "የማያ ማጋራት ተሰርዟል።",
-      screenSharePermissionDenied: "የማያ ፈቃድ አልተሰጠም። የአሳሹን ፈቃዶች ይመልከቱ።",
-      screenShareDisconnected: "የማያ ግንኙነት ጠፍቷል። ማጋራቱን አሁንም ማቆም ይችላሉ።",
-      screenShareError: "የማያ ማጋራት መጀመር አልቻለም። እንደገና ይሞክሩ።",
-      screenContextSent: "የገጹ መረጃ ለአስተማሪ ተልኳል። ቀጥታ ማያዎን አላጋራም።",
-      screenContextFailed: "የገጹን መረጃ መላክ አልተቻለም። እንደገና ይሞክሩ።",
-      screenShareCleanupFailed: "የማያ ማጋራት ቆሟል፣ ግን የሙከራ ምልክቶቹን ማጽዳት አልተቻለም።",
-      screenScreenshotTooLarge: "ከ3 ሜባ ያነሰ ምስል ይምረጡ።",
-      translationUnavailable: "ይህን ትርጉም መጫን አልተቻለም። እንግሊዝኛ እየታየ ነው።",
-      describeOther: "በማስታወሻው የሚፈልጉትን ማስተካከያ ይግለጹ።"
-    }
-  };
-
-  const bundled = { en, am };
+  const en = { lang: "en", dir: "ltr", strings: {} };
+  const am = { lang: "am", dir: "ltr", strings: {} };
+  const bundled = {};
 
   const AMHARIC_TITLES = {
     "what-is-shaping-the-future-of-va-work": "የቨርቹዋል አሲስታንት ሥራን ወደፊት ምን እየቀየረው ነው",
@@ -464,17 +198,16 @@
 
     _jobSections() {
       return this._jobs.map((job) => {
-        const titles = { en: job.title, am: job.title };
+        const titles = { en: job.title, am: job.translations?.am?.title || job.title };
         const text = {};
         const englishDetails = [
           job.description,
-          job.remote ? "Remote work telecommute" : "On site work",
           job.location,
           ...(job.accommodations || [])
         ].filter(Boolean).join(". ");
         text.en = englishDetails;
         text.am = englishDetails;
-        for (const language of ["ti", "om", "so"]) {
+        for (const language of ["am", "ti", "om", "so"]) {
           const translated = job.translations?.[language];
           if (!translated || typeof translated.description !== "string" || !translated.description.trim()) continue;
           titles[language] = translated.title;
@@ -519,7 +252,7 @@
     _render() {
       this.shadowRoot.innerHTML = `
         <style>
-      :host { all: initial; display: block; font-family: system-ui, sans-serif; color: #17251d; font-size: 16px; line-height: 1.5; }
+      :host { all: initial; display: block; font-family: var(--bs-body-font-family, system-ui, sans-serif); color: var(--bs-body-color, #17251d); font-size: 16px; line-height: 1.5; }
           :host([lang="am"]) { line-height: 1.7; }
           *, *::before, *::after { box-sizing: border-box; }
           button, input, textarea { font: inherit; letter-spacing: normal; text-transform: none; }
@@ -527,7 +260,7 @@
           button:hover:not(:disabled) { transform: translateY(-1px); }
           button:disabled { cursor: wait; opacity: .65; }
           button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex="-1"]:focus-visible, a:focus-visible { outline: 3px solid var(--assistant-focus, #92400e); outline-offset: 2px; }
-          .launcher { position: fixed; z-index: 2147483647; inset-inline-end: 20px; inset-block-end: 20px; max-width: calc(100vw - 32px); padding: 12px 20px; border: 2px solid var(--assistant-primary, #166534); border-radius: 999px; background: var(--assistant-primary, #166534); color: var(--assistant-primary-contrast, #fff); font-weight: 700; box-shadow: 0 8px 24px rgba(20, 54, 31, .22); }
+          .launcher { position: fixed; z-index: 2147483647; inset-inline-end: 20px; inset-block-end: 20px; max-width: calc(100vw - 32px); padding: 12px 20px; border: 2px solid var(--assistant-primary, var(--bs-primary, #166534)); border-radius: 999px; background: var(--assistant-primary, var(--bs-primary, #166534)); color: var(--assistant-primary-contrast, #fff); font-weight: 700; box-shadow: 0 8px 24px rgba(20, 54, 31, .22); }
           .panel { position: fixed; z-index: 2147483646; inset-inline-end: 20px; inset-block-end: 84px; width: min(30rem, calc(100vw - 40px)); max-height: min(70vh, 48rem); overflow: auto; border: 1px solid #d5e1d8; border-top: 4px solid var(--assistant-primary, #166534); border-radius: 18px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #17251d); padding: 18px; box-shadow: 0 22px 64px rgba(17, 38, 23, .2); }
           .panel[hidden] { display: none; }
           .panel-inner { display: flex; flex-direction: column; gap: 14px; }
@@ -632,6 +365,7 @@
                 <option value="ar" lang="ar">العربية</option>
               </select>
             </div>
+            <p id="locale-status" role="status" aria-live="polite" hidden></p>
             <p id="greeting" dir="auto"></p>
             <div class="log" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
             <section class="study-pack" id="study-pack" aria-labelledby="study-pack-heading" hidden>
@@ -729,6 +463,7 @@
         accommodationOpen: $("accommodation-open"),
         languageLabel: $("language-label"),
         languageSelect: $("language-select"),
+        localeStatus: $("locale-status"),
         greeting: $("greeting"),
         log: $("messages"),
         studyPack: $("study-pack"), studyPackHeading: $("study-pack-heading"),
@@ -778,7 +513,7 @@
 
     _applyTheme() {
       const themes = {
-        light: ["#166534", "#fff", "#17251d", "#92400e", "#fff"],
+        light: ["var(--bs-primary, #166534)", "var(--bs-body-bg, #fff)", "var(--bs-body-color, #17251d)", "#92400e", "#fff"],
         dark: ["#4ade80", "#171d19", "#f1f5f2", "#bbf7d0", "#052e16"]
       };
       const values = themes[this.getAttribute("theme")] || themes.light;
@@ -1088,7 +823,7 @@
         if (message.answerStatus !== "not_found" && (message.links?.length || message.linkUrl)) {
           const save = document.createElement("button");
           save.type = "button";
-          save.className = "secondary listen-button";
+          save.className = "secondary study-pack-button";
           const saved = this._studyPack.some((item) => item.id === this._studyCardId(message));
           save.textContent = strings[saved ? "removeFromReview" : "saveForReview"];
           save.setAttribute("aria-pressed", saved ? "true" : "false");
@@ -1246,23 +981,38 @@
     async _loadI18n() {
       const requested = (this.getAttribute("lang") || "en").toLowerCase();
       const token = ++this._loadToken;
-      let pack = null;
+      const readPack = async (code) => {
+        try {
+          const response = await fetch(new URL(`${code}.json`, i18nBase));
+          if (!response.ok) throw new Error(`Locale ${code} returned HTTP ${response.status}`);
+          const result = await response.json();
+          if (!result?.strings || result.lang !== code) throw new Error(`Locale ${code} is invalid`);
+          try { localStorage.setItem(`${this._storageKey}:i18n:${code}`, JSON.stringify(result)); } catch { /* Storage may be disabled or full. */ }
+          return result;
+        } catch (error) {
+          let cached;
+          try { cached = JSON.parse(localStorage.getItem(`${this._storageKey}:i18n:${code}`) || "null"); } catch { /* Ignore unavailable storage. */ }
+          if (cached?.strings && cached.lang === code) return cached;
+          throw error;
+        }
+      };
+      let pack;
+      let english;
       this._translationUnavailable = false;
       try {
-        const response = await fetch(new URL(`${requested}.json`, i18nBase));
-        if (!response.ok) throw new Error("Translation fetch failed");
-        pack = await response.json();
-        if (!pack?.strings || pack.lang !== requested) throw new Error("Invalid translation pack");
-        try { localStorage.setItem(`${this._storageKey}:i18n:${requested}`, JSON.stringify(pack)); } catch { /* Storage may be disabled or full. */ }
-      } catch {
-        try { pack = JSON.parse(localStorage.getItem(`${this._storageKey}:i18n:${requested}`) || "null"); } catch { /* Ignore an unavailable cache. */ }
-        if (!pack) {
-          pack = bundled[requested] || bundled.en;
-          this._translationUnavailable = !bundled[requested];
-        }
+        [pack, english] = await Promise.all([readPack(requested), readPack("en")]);
+      } catch (error) {
+        console.error("Could not load assistant locale:", error);
+        return;
       }
       if (token !== this._loadToken) return;
-      this._applyPack({ ...pack, lang: requested, strings: { ...en.strings, ...(pack.strings || {}) } });
+      const missingStrings = Object.keys(english.strings).filter((key) => !pack.strings?.[key]);
+      this._applyPack({
+        ...pack,
+        lang: requested,
+        strings: { ...english.strings, ...(pack.strings || {}) },
+        incomplete: pack.incomplete === true || missingStrings.length > 0
+      });
     }
 
     _applyPack(pack) {
@@ -1280,6 +1030,9 @@
       write(e.person, "person");
       write(e.accommodationOpen, "accommodationButton");
       write(e.languageLabel, "language");
+      e.localeStatus.textContent = pack.incomplete ? (s.translationIncomplete || s.translationUnavailable || "") : "";
+      e.localeStatus.lang = pack.lang;
+      e.localeStatus.hidden = !e.localeStatus.textContent;
       write(e.greeting, "greeting");
       if (this._translationUnavailable) e.greeting.textContent += ` ${s.translationUnavailable || en.strings.translationUnavailable}`;
       write(e.label, "questionLabel");

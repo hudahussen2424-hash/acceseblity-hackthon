@@ -108,6 +108,9 @@ def test_jobs_command_reads_json_file(monkeypatch, tmp_path):
     jobs_file.write_text(
         json.dumps([{
             "title": "Test listing",
+            "translations": {
+                "am": {"title": "የሙከራ ሥራ", "description": "ልምምድ።"},
+            },
             "employer": "Demo team",
             "location": "Remote",
             "remote": True,
@@ -120,8 +123,16 @@ def test_jobs_command_reads_json_file(monkeypatch, tmp_path):
 
     response = telegram_bot.handle_text(123, "/jobs")
     assert "Test listing" in response
-    assert "Demo team — Remote (remote)" in response
+    assert "Demo team — Remote (Remote)" in response
     assert "Practice task." in response
     expected_url = "https://github.com/hudahussen2424-hash/"
     expected_url += "acceseblity-hackthon/blob/main/savanna/pages/jobs.html#test-listing"
     assert expected_url in response
+
+    telegram_bot.set_chat_language(123, "am")
+    amharic_response = telegram_bot.handle_text(123, "/jobs")
+    assert "የሙከራ ሥራ ማስታወቂያዎች" in amharic_response
+    assert "የሙከራ ሥራ" in amharic_response
+    assert "ልምምድ።" in amharic_response
+    assert "(ከሩቅ)" in amharic_response
+    assert "Test listing" not in amharic_response

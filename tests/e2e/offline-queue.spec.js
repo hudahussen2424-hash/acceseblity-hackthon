@@ -27,6 +27,7 @@ test("offline questions can be edited, retried after failure, and removed", asyn
   await page.goto("/demo/blank.html");
   const assistant = page.locator("db-assistant");
   await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("lang", "en"));
   await page.waitForFunction(() => {
     const element = document.querySelector("db-assistant");
     return element?._sections?.length && element?._searchModule?.search;
@@ -89,6 +90,7 @@ test("duplicate form submissions send one question", async ({ page }) => {
   await page.goto("/demo/blank.html");
   const assistant = page.locator("db-assistant");
   await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("lang", "en"));
   await assistant.locator("#launcher").click();
   await assistant.locator("#question").fill(question);
   await assistant.locator("#form").evaluate((form) => {
@@ -113,6 +115,7 @@ test("not-found API answers explicitly identify missing course evidence", async 
   await page.goto("/demo/blank.html");
   const assistant = page.locator("db-assistant");
   await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("lang", "en"));
   await assistant.locator("#launcher").click();
   await assistant.locator("#question").fill("A question with no matching course content.");
   await assistant.locator("#send").click();
