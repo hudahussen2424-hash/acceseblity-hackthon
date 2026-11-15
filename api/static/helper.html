@@ -50,14 +50,17 @@
     <div class="toolbar">
       <label for="token">Helper token<input id="token" type="password" autocomplete="current-password" required></label>
       <button type="button" id="refresh">Load waiting requests</button>
+      <button type="button" id="feedback-refresh">Review answer feedback</button>
     </div>
     <p id="status" role="status" aria-live="polite"></p>
+    <section aria-labelledby="feedback-heading"><h2 id="feedback-heading">Answer and source feedback</h2><ul id="feedback-list" aria-label="Learner answer feedback"></ul></section>
     <ul id="tickets" aria-label="Waiting learner requests"></ul>
   </main>
   <script>
     const tokenField = document.getElementById("token");
     const status = document.getElementById("status");
     const list = document.getElementById("tickets");
+    const feedbackList = document.getElementById("feedback-list");
     const authHeaders = () => ({ "X-Helper-Token": tokenField.value });
     const screenPeers = new Map();
 
@@ -162,6 +165,35 @@
       } catch (error) { status.textContent = error.message; }
     }
 
+    async function loadFeedback() {
+      feedbackList.replaceChildren();
+      status.textContent = "Loading learner feedback…";
+      try {
+        const response = await fetch("/api/v1/answer-feedback", { headers: authHeaders() });
+        if (!response.ok) throw new Error(response.status === 401 ? "Enter a valid helper token." : "Feedback could not be loaded.");
+        const entries = await response.json();
+        status.textContent = `${entries.filter((entry) => !entry.reviewed).length} unreviewed feedback item(s).`;
+        for (const entry of entries) {
+          const row = document.createElement("li");
+          row.textContent = `${entry.reviewed ? "Reviewed · " : "New · "}${entry.reason} (${entry.kind})${entry.source_url ? ` · ${entry.source_url}` : ""} · ${new Date(entry.created_at).toLocaleString()}`;
+          if (!entry.reviewed) {
+            const reviewed = document.createElement("button");
+            reviewed.type = "button"; reviewed.textContent = "Mark reviewed";
+            reviewed.addEventListener("click", async () => {
+              reviewed.disabled = true;
+              try {
+                const result = await fetch(`/api/v1/answer-feedback/${encodeURIComponent(entry.id)}/reviewed`, { method: "POST", headers: authHeaders() });
+                if (!result.ok) throw new Error("Could not mark feedback reviewed. Try again.");
+                await loadFeedback();
+              } catch (error) { status.textContent = error.message; reviewed.disabled = false; }
+            });
+            row.append(" ", reviewed);
+          }
+          feedbackList.append(row);
+        }
+      } catch (error) { status.textContent = error.message; }
+    }
+
     function makeTicket(ticket) {
       const item = document.createElement("li"); item.className = "ticket";
       const title = document.createElement("h2"); title.textContent = `${ticket.type === "accommodation" ? "Accommodation request" : "Request"} ${ticket.ticketId}`; item.append(title);
@@ -243,6 +275,7 @@
     }
 
     document.getElementById("refresh").addEventListener("click", loadTickets);
+    document.getElementById("feedback-refresh").addEventListener("click", loadFeedback);
   </script>
 </body>
 </html>

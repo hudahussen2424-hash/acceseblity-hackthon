@@ -368,6 +368,11 @@ def initialize() -> None:
         db.execute("""CREATE TABLE IF NOT EXISTS content_sections (
             id TEXT PRIMARY KEY, section_json TEXT NOT NULL
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS answer_feedback (
+            id TEXT PRIMARY KEY, kind TEXT NOT NULL, reason TEXT NOT NULL,
+            source_url TEXT NOT NULL, created_at TEXT NOT NULL,
+            reviewed INTEGER NOT NULL DEFAULT 0
+        )""")
         db.execute("""CREATE TABLE IF NOT EXISTS sms_alerts (
             phone_hash TEXT PRIMARY KEY,
             active INTEGER NOT NULL DEFAULT 1,
@@ -618,6 +623,40 @@ async def ask(payload: dict[str, Any]) -> dict[str, Any]:
         indexed_sections(),
         allow_cloud=payload.get("externalAiConsent") is True,
     )
+
+
+@app.post("/api/v1/answer-feedback", status_code=201)
+def create_answer_feedback(payload: dict[str, Any]) -> dict[str, str]:
+    kind, reason, source_url = payload.get("kind"), payload.get("reason"), payload.get("sourceUrl", "")
+    if kind not in {"answer", "source"}:
+        plain_bad("Feedback kind must be answer or source.")
+    if reason not in {"unhelpful", "incorrect"}:
+        plain_bad("Feedback reason must be unhelpful or incorrect.")
+    if not isinstance(source_url, str) or len(source_url) > 2000:
+        plain_bad("Source URL must be 2000 characters or fewer.")
+    feedback_id = str(uuid4())
+    with connect() as db:
+        db.execute("INSERT INTO answer_feedback(id,kind,reason,source_url,created_at) VALUES(?,?,?,?,?)",
+                   (feedback_id, kind, reason, source_url, datetime.now(timezone.utc).isoformat()))
+    return {"feedbackId": feedback_id, "message": "Feedback received."}
+
+
+@app.get("/api/v1/answer-feedback")
+def list_answer_feedback(x_helper_token: str | None = Header(default=None)) -> list[dict[str, Any]]:
+    helper_auth(x_helper_token)
+    with connect() as db:
+        rows = db.execute("SELECT id,kind,reason,source_url,created_at,reviewed FROM answer_feedback ORDER BY created_at DESC LIMIT 500").fetchall()
+    return [dict(row) for row in rows]
+
+
+@app.post("/api/v1/answer-feedback/{feedback_id}/reviewed")
+def mark_answer_feedback_reviewed(feedback_id: str, x_helper_token: str | None = Header(default=None)) -> dict[str, str]:
+    helper_auth(x_helper_token)
+    with connect() as db:
+        cursor = db.execute("UPDATE answer_feedback SET reviewed=1 WHERE id=?", (feedback_id,))
+    if not cursor.rowcount:
+        raise HTTPException(status_code=404, detail="Feedback was not found.")
+    return {"message": "Feedback marked reviewed."}
 
 
 @app.get("/api/v1/config")

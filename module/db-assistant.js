@@ -444,7 +444,7 @@
           button:disabled { cursor: wait; opacity: .65; }
           button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex="-1"]:focus-visible, a:focus-visible { outline: 3px solid var(--assistant-focus, #92400e); outline-offset: 2px; }
           .launcher { position: fixed; z-index: 2147483647; inset-inline-end: 20px; inset-block-end: 20px; max-width: calc(100vw - 32px); padding: 12px 20px; border: 2px solid var(--assistant-primary, #166534); border-radius: 999px; background: var(--assistant-primary, #166534); color: var(--assistant-primary-contrast, #fff); font-weight: 700; box-shadow: 0 8px 24px rgba(20, 54, 31, .22); }
-          .panel { position: fixed; z-index: 2147483646; inset-inline-end: 20px; inset-block-end: 84px; width: min(30rem, calc(100vw - 40px)); max-height: min(78vh, 48rem); overflow: auto; border: 1px solid #d5e1d8; border-top: 4px solid var(--assistant-primary, #166534); border-radius: 18px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #17251d); padding: 18px; box-shadow: 0 22px 64px rgba(17, 38, 23, .2); }
+          .panel { position: fixed; z-index: 2147483646; inset-inline-end: 20px; inset-block-end: 84px; width: min(30rem, calc(100vw - 40px)); max-height: min(70vh, 48rem); overflow: auto; border: 1px solid #d5e1d8; border-top: 4px solid var(--assistant-primary, #166534); border-radius: 18px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #17251d); padding: 18px; box-shadow: 0 22px 64px rgba(17, 38, 23, .2); }
           .panel[hidden] { display: none; }
           .panel-inner { display: flex; flex-direction: column; gap: 14px; }
           .header { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
@@ -499,7 +499,7 @@
           :host([theme="dark"]) textarea::placeholder { color: #cbd5e1; }
           #send { background: var(--assistant-primary, #166534); color: var(--assistant-primary-contrast, #fff); border: 2px solid var(--assistant-primary, #166534); font-weight: 700; }
           @media (max-width: 720px) {
-            .panel { inset-inline: 0; inset-block-end: 0; width: 100%; max-height: min(82vh, calc(100vh - 3rem)); border-radius: 18px 18px 0 0; padding: 14px; }
+            .panel { inset-inline: 0; inset-block-end: 0; width: 100%; max-height: min(70vh, calc(100vh - 3rem)); border-radius: 18px 18px 0 0; padding: 14px; }
             .log { max-height: 24vh; }
             .launcher { position: static; display: block; margin: 14px 14px 14px auto; max-width: calc(100vw - 28px); }
           }
@@ -936,6 +936,39 @@
         const prefix = this._pack?.strings.readInCourse || (lang === "am" ? am.strings.readInCourse : en.strings.readInCourse);
         link.textContent = `${prefix}: ${source.title}`;
         div.appendChild(link);
+      }
+
+      if (isAssistant && message.type !== "system") {
+        const feedback = document.createElement("div");
+        feedback.className = "voice-controls";
+        for (const reason of ["unhelpful", "incorrect"]) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "secondary";
+          button.textContent = reason === "incorrect" ? "Flag as incorrect" : "Flag as unhelpful";
+          button.addEventListener("click", async () => {
+            button.disabled = true;
+            try {
+              const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+              const response = await fetch(`${base}/api/v1/answer-feedback`, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ kind: links.length ? "source" : "answer", reason, sourceUrl: links[0]?.url || "" })
+              });
+              if (!response.ok) throw new Error("Feedback could not be sent.");
+              feedbackStatus.textContent = "Thanks. Your feedback was sent without your question text.";
+              for (const option of feedback.querySelectorAll("button")) option.disabled = true;
+            } catch {
+              feedbackStatus.textContent = "Feedback could not be sent. Check your connection and try again.";
+              button.disabled = false;
+            }
+          });
+          feedback.append(button);
+        }
+        const feedbackStatus = document.createElement("p");
+        feedbackStatus.setAttribute("role", "status");
+        feedbackStatus.setAttribute("aria-live", "polite");
+        feedback.append(feedbackStatus);
+        div.append(feedback);
       }
 
       const showDebug = isDebugMode() || this.hasAttribute("debug");
