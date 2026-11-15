@@ -131,6 +131,7 @@ Common flows include:
 - `GET /api/v1/content` and `POST /api/v1/content` for content management
 - `POST /api/v1/escalations` for tutor-request creation
 - `GET /api/v1/escalations` and `/api/v1/escalations/{ticket_id}` for helper and learner status
+- `GET /api/v1/helper/escalations/{ticket_id}/brief` for an authorized helper handoff brief
 - `POST /api/v1/escalations/{ticket_id}/reply` for tutor replies
 - `GET /api/v1/helper/metrics` for privacy-safe queue age, reply-time, and feedback totals
 - `GET /api/v1/helper/content-health` to check indexed sources, required languages, and placeholder text
@@ -154,6 +155,48 @@ curl -H "X-Helper-Token: $HELPER_TOKEN" http://localhost:8081/api/v1/helper/cont
 ```
 
 The answer response includes a `grounding` object. Successful answers include the exact source quote and a confidence band based on retrieval similarity; this score is not a calibrated probability. Refused or unmatched questions return `status: unverified` and no evidence.
+
+### Tutor handoff briefs
+
+Creating an escalation stores a version-1 `handoffBrief` with the learner language, a query-free lesson/job page path, a concise locally built summary, the handoff reason, and either a verified indexed source or `evidenceStatus: "unavailable"`. Briefs use only the shared conversation and indexed retrieval evidence; no cloud model is called. The original conversation remains on the helper ticket. Briefs are returned only from helper-authenticated ticket endpoints, not learner ticket/status/export endpoints. Older tickets without a stored brief are regenerated locally on the helper brief endpoint.
+
+The optional `handoffReason` request field accepts `answer_not_found`, `learner_requested_person`, `answer_flagged_incorrect`, or `other`. If omitted, the API derives `answer_not_found` from a shared assistant message with that answer status, and otherwise uses `learner_requested_person`.
+
+```bash
+curl -X POST http://localhost:8081/api/v1/escalations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "conversation": [
+      {"role": "user", "text": "What does this lesson say about virtual assistant work?"},
+      {"role": "assistant", "text": "Please review this course section.", "answerStatus": "answered"}
+    ],
+    "language": "en",
+    "page": "http://localhost:8080/savanna/pages/concept-with-navigation.html",
+    "handoffReason": "learner_requested_person"
+  }'
+
+curl -H "X-Helper-Token: $HELPER_TOKEN" \
+  http://localhost:8081/api/v1/helper/escalations/TICKET_ID/brief
+```
+
+The helper-only brief response contains `version`, `language`, `requestedPage`, `summary`, `source` (`null` when no reliable match exists), `reason`, and `evidenceStatus`. The authenticated helper inbox also includes `handoffBrief`; render it as text rather than HTML.
+
+Example helper response:
+
+```json
+{
+  "version": 1,
+  "language": "en",
+  "requestedPage": "/savanna/pages/concept-with-navigation.html",
+  "summary": "The learner question matched indexed course material: \"What is Shaping the Future of VA Work\". Relevant indexed excerpt: ...",
+  "source": {
+    "title": "What is Shaping the Future of VA Work",
+    "url": "savanna/pages/concept-with-navigation.html#what-is-shaping-the-future-of-va-work"
+  },
+  "reason": "learner_requested_person",
+  "evidenceStatus": "available"
+}
+```
 
 ## Local development and testing
 

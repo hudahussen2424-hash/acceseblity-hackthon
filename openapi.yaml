@@ -184,14 +184,13 @@ paths:
     post:
       summary: Create Escalation
       operationId: create_escalation_api_v1_escalations_post
+      description: Creates a ticket and stores a deterministic, versioned tutor handoff brief. The original conversation remains available to authenticated helpers.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
-              title: Payload
+              $ref: '#/components/schemas/EscalationCreateRequest'
       responses:
         '201':
           description: Successful Response
@@ -213,6 +212,7 @@ paths:
     get:
       summary: List Waiting
       operationId: list_waiting_api_v1_escalations_get
+      description: Lists waiting tickets, including their handoff briefs, for an authenticated helper.
       parameters:
       - name: x-helper-token
         in: header
@@ -224,14 +224,13 @@ paths:
           title: X-Helper-Token
       responses:
         '200':
-          description: Successful Response
+          description: Waiting tickets with the original conversation and helper-only handoff brief.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  additionalProperties: true
+                  $ref: '#/components/schemas/HelperEscalation'
                 title: Response List Waiting Api V1 Escalations Get
         '422':
           description: Validation Error
@@ -239,6 +238,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/helper/escalations/{ticket_id}/brief:
+    get:
+      summary: Get Tutor Handoff Brief
+      description: Returns or locally regenerates a versioned brief. Requires the helper token; learner access tokens are not accepted.
+      parameters:
+      - name: ticket_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: x-helper-token
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Deterministic helper handoff brief with an explicit evidence availability state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffBrief'
+        '401':
+          description: Invalid helper token.
+        '404':
+          description: Ticket was not found or has expired.
+        '503':
+          description: Helper access is not configured.
   /api/v1/escalations/{ticket_id}:
     get:
       summary: Get Escalation
@@ -560,6 +587,81 @@ components:
               requestId:
                 type: string
   schemas:
+    HandoffBrief:
+      type: object
+      required:
+      - version
+      - language
+      - requestedPage
+      - summary
+      - source
+      - reason
+      - evidenceStatus
+      properties:
+        version:
+          type: integer
+          const: 1
+        language:
+          type: string
+          enum: [en, am, om, ti, so, ar]
+        requestedPage:
+          type: string
+        summary:
+          type: string
+          maxLength: 600
+        source:
+          oneOf:
+          - type: object
+            required: [title, url]
+            properties:
+              title:
+                type: string
+              url:
+                type: string
+          - type: 'null'
+        reason:
+          type: string
+          enum: [answer_not_found, learner_requested_person, answer_flagged_incorrect, other]
+        evidenceStatus:
+          type: string
+          enum: [available, unavailable]
+        jobId:
+          type: string
+      additionalProperties: false
+    EscalationCreateRequest:
+      type: object
+      required: [conversation, language, page]
+      properties:
+        conversation:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            required: [text]
+            properties:
+              role:
+                type: string
+              text:
+                type: string
+                maxLength: 4000
+              answerStatus:
+                type: string
+        language:
+          type: string
+          enum: [en, am, om, ti, so, ar]
+        page:
+          type: string
+          maxLength: 2048
+        handoffReason:
+          type: string
+          enum: [answer_not_found, learner_requested_person, answer_flagged_incorrect, other]
+      additionalProperties: true
+    HelperEscalation:
+      type: object
+      properties:
+        handoffBrief:
+          $ref: '#/components/schemas/HandoffBrief'
+      additionalProperties: true
     HTTPValidationError:
       properties:
         detail:

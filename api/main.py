@@ -19,7 +19,7 @@ import urllib.request
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 try:
@@ -32,6 +32,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from .qa import answer_question
 from .retrieval import retrieve
@@ -57,6 +58,22 @@ _HANDOFF_REASONS = {
 }
 _EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 _PHONE_PATTERN = re.compile(r"(?<!\w)(?:\+?\d[\d\s().-]{6,}\d)(?!\w)")
+
+
+class HandoffSource(BaseModel):
+    title: str
+    url: str
+
+
+class HandoffBrief(BaseModel):
+    version: Literal[1]
+    language: Literal["en", "am", "om", "ti", "so", "ar"]
+    requestedPage: str
+    summary: str
+    source: HandoffSource | None
+    reason: Literal["answer_not_found", "learner_requested_person", "answer_flagged_incorrect", "other"]
+    evidenceStatus: Literal["available", "unavailable"]
+    jobId: str | None = None
 
 
 def load_env_file() -> None:
@@ -813,6 +830,16 @@ def _redact_brief_text(value: str, limit: int = 280) -> str:
     return text[:limit].rstrip()
 
 
+def _safe_handoff_source_url(url: str) -> bool:
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    if parts.scheme:
+        return parts.scheme in {"http", "https"} and bool(parts.hostname)
+    return bool(parts.path) and not parts.netloc and not url.startswith(("\\", "//"))
+
+
 def _handoff_reason(conversation: list[dict[str, Any]], requested: str | None) -> str:
     if requested is not None:
         return requested
@@ -867,11 +894,7 @@ def build_handoff_brief(
             and isinstance(match.get("title"), str)
             and match["title"].strip()
             and isinstance(match.get("url"), str)
-            and (
-                match["url"].startswith("/")
-                and not match["url"].startswith("//")
-                or urllib.parse.urlsplit(match["url"]).scheme in {"http", "https"}
-            )
+            and _safe_handoff_source_url(match["url"])
         ):
             source = {"title": match["title"][:300], "url": match["url"][:2000]}
             text = match.get("text")
@@ -1279,7 +1302,9 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
     if not isinstance(page, str) or not page or len(page) > 2048:
         plain_bad("Add the page address.")
     handoff_reason = payload.get("handoffReason")
-    if handoff_reason is not None and handoff_reason not in _HANDOFF_REASONS:
+    if handoff_reason is not None and (
+        not isinstance(handoff_reason, str) or handoff_reason not in _HANDOFF_REASONS
+    ):
         plain_bad("Handoff reason must be answer_not_found, learner_requested_person, answer_flagged_incorrect, or other.")
     if not isinstance(note, str) or len(note) > 4000:
         plain_bad("The note must be 4000 characters or fewer.")
@@ -1383,7 +1408,7 @@ def list_waiting(x_helper_token: str | None = Header(default=None)) -> list[dict
     return tickets
 
 
-@app.get("/api/v1/helper/escalations/{ticket_id}/brief")
+@app.get("/api/v1/helper/escalations/{ticket_id}/brief", response_model=HandoffBrief)
 def get_helper_handoff_brief(
     ticket_id: str,
     x_helper_token: str | None = Header(default=None),
