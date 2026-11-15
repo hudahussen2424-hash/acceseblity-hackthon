@@ -208,6 +208,7 @@ def test_indexed_jobs_include_localized_titles_and_text():
 
 
 def test_cloud_provider_requires_explicit_learner_consent(client, monkeypatch):
+    monkeypatch.setenv("OFFLINE_MODE", "false")
     imported = []
 
     class RetrievalOnlyProvider:
@@ -246,6 +247,7 @@ def test_cloud_provider_requires_explicit_learner_consent(client, monkeypatch):
 
 
 def test_escalation_lifecycle_and_webhook(client, monkeypatch):
+    monkeypatch.setenv("OFFLINE_MODE", "false")
     webhook_calls = []
 
     def mock_urlopen(request, timeout=5):

@@ -1395,8 +1395,6 @@ def assistant_config() -> dict[str, bool]:
 @app.post("/api/v1/jobs/notify")
 def notify_job(payload: dict[str, Any], x_helper_token: str | None = Header(default=None)) -> dict[str, Any]:
     helper_auth(x_helper_token)
-    if offline_mode():
-        return {"telegram": {"sent": 0, "failed": 0, "skipped": 1}, "sms": {"sent": 0, "failed": 0, "skipped": 1}}
     job = payload.get("job", payload)
     if not isinstance(job, dict):
         plain_bad("Send one job object.")
@@ -1405,6 +1403,8 @@ def notify_job(payload: dict[str, Any], x_helper_token: str | None = Header(defa
             plain_bad(f"Job needs a {field}.")
     if not isinstance(job.get("remote"), bool):
         plain_bad("Job remote must be true or false.")
+    if offline_mode():
+        return {"telegram": {"sent": 0, "failed": 0, "skipped": 1}, "sms": {"sent": 0, "failed": 0, "skipped": 1}}
     message = f"New: {job['title']} | {'Remote' if job['remote'] else 'On site'} | {job['location']}"
     try:
         from . import telegram_bot

@@ -134,6 +134,7 @@ def test_sms_inbound_jobs_command(client):
 
 
 def configure_sms_alerts(monkeypatch):
+    monkeypatch.setenv("OFFLINE_MODE", "false")
     monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC-test-account")
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", "test-auth")
     monkeypatch.setenv("TWILIO_FROM_NUMBER", "+251900000000")
@@ -230,6 +231,7 @@ def test_sms_job_alert_calls_configured_twilio_gateway(client, monkeypatch):
     from urllib.parse import parse_qs
 
     account_sid = "AC-test-account"
+    monkeypatch.setenv("OFFLINE_MODE", "false")
     monkeypatch.setenv("TWILIO_ACCOUNT_SID", account_sid)
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", "test-auth")
     monkeypatch.setenv("TWILIO_FROM_NUMBER", "+251900000000")

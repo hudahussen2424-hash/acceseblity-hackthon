@@ -1,5 +1,13 @@
 # db-assistant
 
+## Hackathon submission details
+
+- **Track:** 3 — Multilingual assistant and live help
+- **Team members:** `[TEAM: fill in names and consented contact details]`
+- **Co-designer:** `[TEAM: add the co-designer's consented identifier; do not add private contact or disability information]`
+- **Main task:** `[TEAM: write the one-sentence task agreed with the co-designer, for example: “A learner asks a sourced course question and gets tutor help independently on their phone.”]`
+- **Accessibility gate:** Not completed. See [CONFORMANCE.md](./CONFORMANCE.md); it requires a real co-designer session and cannot be satisfied by automated tests alone.
+
 A multilingual learning assistant and tutor-escalation demo designed for accessibility-focused course support.
 
 ## Overview
@@ -101,7 +109,7 @@ The app reads settings from `.env`. The following values are the main ones you w
 The frontend is loaded with a simple script tag and can be embedded in a page:
 
 ```html
-<script src="/module/db-assistant.js" defer></script>
+<script src="/module/db-assistant.min.js" defer></script>
 <db-assistant
   id="lesson-assistant"
   lang="en"
@@ -120,6 +128,10 @@ This component supports:
 - optional AI answer fallback when configured
 - browser-local retry and queued question behavior when offline
 - an offline study pack for saving sourced answers locally and downloading them for review
+
+The `<db-assistant>` component accepts `lang`, `api`, `content`, `theme`, and `debug` attributes. The `lang` attribute uses a locale file in `module/i18n/`; `api` is the API base URL; `content` optionally points to host-provided course JSON; `theme` accepts `light` or `dark`; `debug` enables retrieval-score details. The component dispatches bubbling, composed `db-assistant:ready`, `db-assistant:open`, `db-assistant:close`, `db-assistant:question`, `db-assistant:person`, `db-assistant:escalated`, and `db-assistant:error` events. `db-assistant:question` includes `{ text, language, input }`; `input` is `text` or `voice`. `db-assistant:escalated` includes `ticketId` and, for accommodation requests, `type`.
+
+The blank-host proof is [demo/blank.html](./demo/blank.html). It contains only one external script tag and no Savanna or Bootstrap CSS. The component loads its search helper and locale resources relative to that script. It uses a shadow root for its UI styling and emits events instead of changing host page styles.
 
 ## API
 
@@ -158,6 +170,67 @@ curl -X POST http://localhost:8081/api/v1/voice/commands \
 ```
 
 For tutor submission, first send a transcript such as `talk to a tutor` with `shareConsent: true`, then review and retain the returned `draftToken`. Confirm with transcript `send it`, the same `draftToken`, `shareConsent: true`, and a unique `Idempotency-Key` header of 16–128 safe characters. A retry with the same key returns the same ticket. Transcript-only mode assumes the browser recognizer is local; the server itself never sends speech to a remote recognizer.
+
+The widget's **Speak a task** control records audio on the learner's explicit action and uploads it to the configured API for local transcription. It does not invoke the browser's speech-recognition service for this task flow. If the browser is offline, audio is queued in that browser's local storage (up to 1.6 MB per recording) and replayed through the idempotent sync endpoint after reconnection. The ordinary **Use microphone** dictation control still uses the browser's speech recognition when available; its network behavior depends on the browser and device and is not claimed to be offline. Tutor requests open the existing consent control; the learner must check it, repeat the request, review the draft, then speak “send it.”
+
+### Local speech engine setup
+
+No speech models are bundled. The current checkout reports transcript input available but server-side STT and TTS unavailable until local tools and model files are provisioned. Install FFmpeg and Vosk in the API environment, install the Piper executable, and place the chosen local model files on disk. Then set paths in `.env` for each model actually installed, for example:
+
+```dotenv
+OFFLINE_MODE=true
+VOICE_PROVIDER=local
+VOICE_ACTION_SECRET=<generate-a-stable-random-secret-at-least-32-characters>
+FFMPEG_EXECUTABLE=ffmpeg
+PIPER_EXECUTABLE=piper
+VOICE_STT_MODEL_EN=/models/vosk-en
+VOICE_TTS_MODEL_EN=/models/en_US-lessac-medium.onnx
+```
+
+Use the `VOICE_STT_MODEL_AM`, `VOICE_STT_MODEL_TI`, `VOICE_STT_MODEL_OM`, `VOICE_STT_MODEL_SO`, and `VOICE_STT_MODEL_AR` variables for other Vosk model directories, and matching `VOICE_TTS_MODEL_<LANG>` paths for Piper `.onnx` files. These are examples of path conventions, not bundled or verified model recommendations. Check each selected model's own license and language quality before redistribution. Query `/api/v1/voice/capabilities` to see which languages are ready. Missing local models result in a clear `503`; no cloud STT/TTS fallback is attempted. Do not put a real key or secret in source control.
+
+### Copy-paste API examples
+
+These examples cover every API route in the OpenAPI contract. Set placeholders only in your local shell; use test data. The backend defaults to offline mode, so webhook, SMS, Telegram, and cloud-AI egress remain disabled.
+
+```bash
+API=http://localhost:8081
+HELPER_TOKEN=replace-with-local-helper-token
+TICKET_ID=replace-with-ticket-id
+LEARNER_TOKEN=replace-with-learner-access-token
+FEEDBACK_ID=replace-with-feedback-id
+
+curl -H "X-Helper-Token: $HELPER_TOKEN" "$API/api/v1/helper/metrics"
+curl -H "X-Helper-Token: $HELPER_TOKEN" "$API/api/v1/helper/content-health"
+curl -X POST "$API/api/v1/content" -H 'Content-Type: application/json' -d '{"sections":[{"id":"demo-1","title":"Demo lesson","url":"/lesson#demo-1","text":{"en":"A test lesson sentence."}}]}'
+curl "$API/api/v1/content"
+curl "$API/api/v1/voice/guide?language=en"
+curl "$API/api/v1/voice/capabilities"
+curl "$API/api/v1/voice/guide/audio?language=en" -o voice-guide.wav
+curl -X POST "$API/api/v1/voice/commands" -H 'Content-Type: application/json' -d '{"transcript":"Explain this lesson","language":"en"}'
+curl -X POST "$API/api/v1/voice/actions/sync" -H 'Content-Type: application/json' -d '{"actions":[{"id":"offline-demo-1","expiresAt":9999999999,"idempotencyKey":"voice-demo-action-key-1","transcript":"Explain this lesson","language":"en"}]}'
+curl -X POST "$API/api/v1/ask" -H 'Content-Type: application/json' -d '{"question":"What does the lesson say?","language":"en"}'
+curl -X POST "$API/api/v1/answer-feedback" -H 'Content-Type: application/json' -d '{"kind":"answer","reason":"unhelpful","sourceUrl":"/lesson#demo-1"}'
+curl -H "X-Helper-Token: $HELPER_TOKEN" "$API/api/v1/answer-feedback"
+curl -X POST "$API/api/v1/answer-feedback/$FEEDBACK_ID/reviewed" -H "X-Helper-Token: $HELPER_TOKEN"
+curl "$API/api/v1/config"
+curl -X POST "$API/api/v1/jobs/notify" -H "X-Helper-Token: $HELPER_TOKEN" -H 'Content-Type: application/json' -d '{"job":{"id":"demo-job","title":"Test role","location":"Addis Ababa","url":"/jobs#demo-job","description":"Test data only","remote":true}}'
+curl -X POST "$API/api/v1/sms/inbound" -H 'Content-Type: application/json' -d '{"from":"0912345678","text":"JOBS"}'
+curl -X POST "$API/sms/inbound" -H 'Content-Type: application/json' -d '{"from":"0912345678","text":"JOBS"}'
+curl -X POST "$API/api/v1/escalations" -H 'Content-Type: application/json' -d '{"conversation":[{"role":"user","text":"Please help with this lesson."}],"language":"en","page":"/lesson"}'
+curl -H "X-Helper-Token: $HELPER_TOKEN" "$API/api/v1/escalations"
+curl -H "X-Helper-Token: $HELPER_TOKEN" "$API/api/v1/helper/escalations/$TICKET_ID/brief"
+curl -H "X-Learner-Token: $LEARNER_TOKEN" "$API/api/v1/escalations/$TICKET_ID"
+curl -H "X-Learner-Token: $LEARNER_TOKEN" "$API/api/v1/escalations/$TICKET_ID/data"
+curl -X DELETE -H "X-Learner-Token: $LEARNER_TOKEN" "$API/api/v1/escalations/$TICKET_ID/data"
+curl -X POST "$API/api/v1/escalations/$TICKET_ID/signal" -H 'Content-Type: application/json' -d '{"type":"offer","sdp":"test-only-session-description"}'
+curl -H "X-Helper-Token: $HELPER_TOKEN" "$API/api/v1/escalations/$TICKET_ID/signal?type=offer"
+curl -X DELETE "$API/api/v1/escalations/$TICKET_ID/signal"
+curl -X POST "$API/api/v1/escalations/$TICKET_ID/reply" -H "X-Helper-Token: $HELPER_TOKEN" -H 'Content-Type: application/json' -d '{"text":"Test tutor reply","resolve":true}'
+curl -X DELETE "$API/api/v1/escalations/$TICKET_ID" -H "X-Helper-Token: $HELPER_TOKEN"
+```
+
+For an SMS gateway, configure it to POST JSON `{ "from": "0912345678", "text": "JOBS" }` to `/sms/inbound` (or `/api/v1/sms/inbound`) and return the plain-text body to the sender. The handler formats replies within the SMS limit. There is no SMS gateway bundled; use the curl request above for a local simulation. Job alerts and SMS delivery require external integrations and are skipped in offline mode.
 
 - **Verifiable answers:** `/api/v1/ask` returns a `grounding` object with its evidence quote, source URL, retrieval score, and verification method. Refused or unmatched answers have no evidence. Confidence bands are based on retrieval similarity, not calibrated probabilities.
 - **Request tracing:** responses carry `X-Request-ID`; JSON logs record route, method, status, elapsed time, and request ID without question text, ticket contents, or phone numbers.
@@ -233,6 +306,15 @@ npm run test:axe
 
 These checks provide local integration evidence for the project, but they are not a substitute for live user testing, accessibility review on real devices, or production deployment validation.
 
+### Verification record — 2026-11-16
+
+- `npm run build:module`, `npm run check:module-size`, and `npm test` completed successfully. The search suite passed all 37 tests; the generated bundle is 26.52 KB gzipped.
+- `python -m pytest -q tests/test_qa.py tests/test_sms.py tests/test_telegram_bot.py tests/test_level2_api.py tests/test_voice_offline.py` passed all 86 tests. Pytest reported one Starlette/httpx deprecation warning.
+- `docker compose config --quiet` completed successfully. Docker could not connect to the Docker Desktop Linux engine pipe, so the containers and clean-machine startup were not tested.
+- `npm run test:e2e -- --workers=1 --reporter=line` did not reach the browser tests: Playwright timed out probing `127.0.0.1:8000/demo/blank.html`. A direct Python HTTP server probe also hit an OS socket access-denied error on loopback. No axe result is claimed.
+- The Slow 3G script was attempted, but the local server could not be reached and the script's `npx` Lighthouse invocation did not complete. No Lighthouse timing result is claimed.
+- The jobs page emits a JSON-LD graph for its test listings. Its existing browser test checks that listing titles and URLs match the source data, but the browser test did not run here. The graph omits guide example fields `datePosted` and `employmentType`, and uses an unstructured place name instead of a postal address, so full Schema.org completeness is not claimed.
+
 ## Accessibility and privacy notes
 
 This project intentionally focuses on accessibility and learner support, but it is still a demo/prototype. Some important points:
@@ -251,6 +333,33 @@ For real deployment, treat the repository as a foundation rather than a producti
 - The job listings and some integrations are demo/test data rather than live production services.
 - WebRTC, SMS, Telegram, and webhook flows are included as examples or optional integrations and require proper deployment and validation.
 
+## Languages and adding a locale
+
+The component currently has locale packs for English, Amharic, Tigrinya, Afaan Oromo, Somali, and Arabic. To add a language, add `module/i18n/<code>.json`, add the language option to the selector in `module/db-assistant.js`, add the locale to `SUPPORTED_LANGUAGES` and the localized answer/voice guide dictionaries in the API, and provide translated course/job data. For right-to-left languages set `dir: "rtl"` and use logical CSS properties. A fluent speaker should review every label, error, guide step, answer, and voice phrase before describing a locale as complete. See [TRANSLATION_REVIEW.md](./TRANSLATION_REVIEW.md) for current coverage and sign-off fields. The non-English translations still need fluent-speaker review.
+
+## Offline behavior, data, and privacy
+
+- Typed questions use the local course/job index when offline and the existing browser queue stores pending questions locally.
+- Voice task recordings are queued in browser local storage only while offline and removed after a sync response. The server handles audio in memory/pipe-based local processing and does not persist raw command audio. Ordinary tutor voice notes remain an explicit attachment in the existing tutor flow.
+- Tutor conversation content is stored in SQLite when a tutor ticket is created with sharing consent. Learner ticket access tokens are held in browser local storage so the learner can check, export, or delete their ticket. `TICKET_RETENTION_DAYS` controls automatic server-side expiry.
+- `GET /api/v1/escalations/{ticket_id}/data` exports a learner's ticket with `X-Learner-Token`; `DELETE` on the same `/data` path deletes it. The widget also has local clear-data controls.
+- The default `OFFLINE_MODE=true` prevents cloud AI, webhook, SMS, and Telegram egress from the API. Screen sharing is user-started and uses the browser's native permission prompt. The Android alternative sends page details and an optional learner-selected screenshot.
+- The server cannot operate while a device has no connection. Browser recording and local queue storage happen on the device. `Speak a task` uploads to the configured server only after recording ends and a connection is available.
+
+## Performance, costs, and libraries
+
+- **Bundle size:** Built with `npm run build:module`; measured by `npm run check:module-size` as **26.52 KB gzipped (27,157 bytes)** on 2026-11-16. This is the generated `module/db-assistant.min.js` bundle.
+- **Slow 3G:** Not measured. The attempt on 2026-11-16 could not reach the local static server at `127.0.0.1:8000`. Run `scripts/measure-slow3g.ps1` against `demo/blank.html` in an environment where the local server is reachable; then record observed load time and First Contentful Paint.
+- **Rough cost for 3,000 learners:** With an institution-provided host, local open-source inference, and external SMS/AI disabled, the software/API subscription cost is approximately **$0 per month**. This excludes the host's hardware, electricity, internet, operations, and any optional paid messaging. No load test or concurrency profile for 3,000 learners has been completed, so infrastructure cost and capacity need a measured deployment profile before launch.
+- **Direct runtime dependencies and licenses:** FastAPI (MIT), Uvicorn (BSD-3-Clause), cryptography (Apache-2.0 OR BSD-3-Clause), HTTPX (BSD-3-Clause), and ruamel.yaml (MIT). Browser/test tooling: `@axe-core/playwright` (MPL-2.0), `@playwright/test` (Apache-2.0), and Terser (BSD-2-Clause). The lock files identify exact versions; review transitive package, base-image, and any separately provisioned speech-model licenses before redistribution.
+
+## Current completion status
+
+- **Implemented:** Track 3 assistant and helper flows, career/job content, versioned API/OpenAPI, backend voice guide and local command processing, consented/idempotent tutor voice sends, local offline queues, and a blank-host embed demo. The jobs page emits JobPosting JSON-LD, but its full schema completeness and runtime output have not been verified; treat Level 3 as partial.
+- **Not yet evidenced:** Co-designer accessibility gate, axe zero-serious result for the final revision, actual 200% browser zoom and assistive-technology testing, physical-device voice/model coverage, fluent-speaker review of all locales, screen-share interoperability on real networks, clean-machine Docker Compose run, runtime JobPosting JSON-LD check, Slow 3G measurement, and 3,000-learner load/cost validation. The Compose file parses successfully, but the Docker daemon was unavailable for a runtime check.
+- **Voice models:** No Vosk/Piper model files are bundled or installed in this checkout. Text transcript mode works without them; raw-audio transcription and generated guide audio require local models and FFmpeg.
+- **Team input still required:** Team/co-designer identifiers, agreed main-task sentence, exact ALX-selected open-source license, co-designer test record, model choices/licenses, and actual performance/cost measurements.
+
 ## License
 
-This repository does not currently declare a project license in the root manifest. Check the relevant package and image licenses before production use or redistribution.
+**TEAM DECISION REQUIRED:** The supplied Track 3 guide says to use the open license named by ALX at kick-off, but the provided guide copy and repository do not name it. Ask the mentor/ALX team which license was selected, then add that exact license as the root `LICENSE` file before submission. Do not treat this README placeholder as a grant to redistribute the code.

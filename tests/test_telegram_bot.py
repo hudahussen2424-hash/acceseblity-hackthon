@@ -68,7 +68,7 @@ def test_regular_message_uses_shared_answer_pipeline(monkeypatch, tmp_path):
     telegram_bot.initialize_storage()
     calls = []
 
-    async def answer_question(question, language, sections):
+    async def answer_question(question, language, sections, **kwargs):
         calls.append((question, language, sections))
         return {
             "answer": "Use a clear process.",

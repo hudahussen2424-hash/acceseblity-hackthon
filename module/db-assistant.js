@@ -1644,7 +1644,7 @@
 
       // 1. Append user's question
       this._appendMessage({ role: "user", text, lang: currentLang });
-      this._emit("question", { text });
+      this._emit("question", { text, language: currentLang, input: "text" });
 
       const isOffline = !navigator.onLine;
       let wasQueued = false;
