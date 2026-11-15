@@ -319,14 +319,15 @@ Playwright starts the FastAPI app as its web server so demo pages and `/api/v1` 
 
 These checks provide local integration evidence for the project, but they are not a substitute for live user testing, accessibility review on real devices, or production deployment validation.
 
-### Verification record — 2026-11-17
+### Verification record — 2026-11-16
 
-- `npm.cmd run build:module` and `npm.cmd run check:module-size` completed successfully. The generated `module/db-assistant.min.js` bundle is 20.59 KB gzipped (21,089 bytes).
+- `npm.cmd run build:module` and `npm.cmd run check:module-size` completed successfully. The generated `module/db-assistant.min.js` bundle is 20.63 KB gzipped (21,122 bytes).
 - `npm.cmd test` passed all 37 JavaScript tests.
 - `python -m pytest -q` passed all 111 Python tests. Pytest reported one Starlette/httpx deprecation warning. Python syntax checks passed for `api/main.py`, `api/telegram_bot.py`, and `scripts/build_content.py`.
-- The full Playwright run used `E2E_PORT=18026` and a temporary SQLite database: `npm.cmd run test:e2e -- --reporter=line` passed all 33 tests. This included all five axe scenarios, which found no critical or serious violations; the queued-question case reached axe analysis. E2E uses the API app as its web server, offline integrations, a test-only helper token, and a temporary database.
+- The full Playwright run used `E2E_PORT=18034` and a temporary SQLite database: `npm.cmd run test:e2e -- --reporter=line` passed all 33 tests. This included all five axe scenarios, which found no critical or serious violations; the queued-question case reached axe analysis. E2E uses the API app as its web server, offline integrations, a test-only helper token, and a temporary database.
+- A direct browser smoke run on the isolated app verified an Amharic course answer and source link, a consented tutor request, a localized tutor-ticket selector, and ticket persistence with the localized label after reload.
 - `docker compose config --quiet` completed successfully. `docker info` could not connect to `npipe:////./pipe/dockerDesktopLinuxEngine` because the Docker Desktop Linux engine pipe was missing; no container runtime check passed.
-- The Slow 3G script was attempted against `demo/blank.html` on a reachable local API server. PowerShell rejected the script with `PSSecurityException` because script execution is disabled; Lighthouse did not run and no load/FCP measurement is claimed.
+- The Slow 3G script was attempted against `demo/blank.html` on a reachable local API server on 2026-11-16. PowerShell rejected the script with `PSSecurityException` because script execution is disabled; Lighthouse did not run and no load/FCP measurement is claimed.
 - The browser test checked that JobPosting JSON-LD matches rendered listing data. The graph omits guide example fields `datePosted` and `employmentType` and uses an unstructured place name instead of a postal address, so full Schema.org completeness is not claimed.
 
 ## Accessibility and privacy notes
@@ -362,8 +363,8 @@ The component currently has locale packs for English, Amharic, Tigrinya, Afaan O
 
 ## Performance, costs, and libraries
 
-- **Bundle size:** Built with `npm.cmd run build:module`; measured by `npm.cmd run check:module-size` as **20.59 KB gzipped (21,089 bytes)** on 2026-11-17. This is the generated `module/db-assistant.min.js` bundle.
-- **Slow 3G:** Not measured. On 2026-11-17, the local API server was reachable, but PowerShell blocked `scripts/measure-slow3g.ps1` with `PSSecurityException` because script execution is disabled. Run the script in an environment that permits it; then record observed load time, First Contentful Paint, method, and date.
+- **Bundle size:** Built with `npm.cmd run build:module`; measured by `npm.cmd run check:module-size` as **20.63 KB gzipped (21,122 bytes)** on 2026-11-16. This is the generated `module/db-assistant.min.js` bundle.
+- **Slow 3G:** Not measured. On 2026-11-16, the local API server was reachable, but PowerShell blocked `scripts/measure-slow3g.ps1` with `PSSecurityException` because script execution is disabled. Run the script in an environment that permits it; then record observed load time, First Contentful Paint, method, and date.
 - **Rough cost for 3,000 learners:** With an institution-provided host, local open-source inference, and external SMS/AI disabled, the software/API subscription cost is approximately **$0 per month**. This excludes the host's hardware, electricity, internet, operations, and any optional paid messaging. No load test or concurrency profile for 3,000 learners has been completed, so infrastructure cost and capacity need a measured deployment profile before launch.
 - **Direct runtime dependencies and licenses:** FastAPI (MIT), Uvicorn (BSD-3-Clause), cryptography (Apache-2.0 OR BSD-3-Clause), HTTPX (BSD-3-Clause), and ruamel.yaml (MIT). Browser/test tooling: `@axe-core/playwright` (MPL-2.0), `@playwright/test` (Apache-2.0), and Terser (BSD-2-Clause). The lock files identify exact versions; review transitive package, base-image, and any separately provisioned speech-model licenses before redistribution.
 

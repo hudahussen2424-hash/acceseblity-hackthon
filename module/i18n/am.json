@@ -95,6 +95,7 @@
     "jobsListTitle": "የሙከራ ሥራ ማስታወቂያዎች",
     "jobsListUnavailable": "የሙከራ ሥራ ዝርዝሩ አሁን አይገኝም።",
     "jobsListEmpty": "ገና የሙከራ ሥራ አልተዘረዘረም።",
+    "ticketRequestLabel": "የጥያቄ {number} ({code})",
     "jobAccommodations": "ማስተካከያዎች",
     "otherAccommodation": "ሌላ (በማስታወሻ ይግለጹ)",
     "accommodationNote": "አማራጭ ማስታወሻ",

@@ -88,6 +88,7 @@
     "jobsListTitle": "ዝርዝር ፈተነ ስራሕ",
     "jobsListUnavailable": "ዝርዝር ፈተነ ስራሕ ሕጂ ኣይርከብን።",
     "jobsListEmpty": "ገና ፈተነ ስራሕ ኣይተዘርዘረን።",
+    "ticketRequestLabel": "ሕቶ {number} ({code})",
     "jobAccommodations": "ምትዕርራያት",
     "otherAccommodation": "ካልእ (ኣብ ማስታወሻ ግለጾ)",
     "accommodationNote": "ኣማራጺ ማስታወሻ",

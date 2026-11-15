@@ -22,18 +22,17 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
   await expect(answer).toContainText(amharicQuestion.slice(0, 24));
   await expect(answer.locator("a.course-link")).toHaveAttribute("href", /concept-with-navigation\.html#/);
   await expect(answer.locator("a.course-link")).toHaveCount(1);
-  await assistant.locator("#language-select").selectOption("en");
-
   const ticketIdPromise = assistant.evaluate((element) => new Promise((resolve) => {
     element.addEventListener("db-assistant:escalated", (event) => resolve(event.detail.ticketId), { once: true });
   }));
-  await assistant.getByRole("button", { name: "Talk to a person" }).click();
+  await assistant.getByRole("button", { name: "ከሰው ጋር ይነጋገሩ" }).click();
   await assistant.locator("#send-escalation").click();
   const ticketId = await ticketIdPromise;
   expect(ticketId).toMatch(/^[0-9a-f-]{36}$/i);
   await expect(assistant.locator("#escalation-status")).toContainText(ticketId);
   await expect(assistant.locator("#check-tutor-reply")).toBeVisible();
-  await expect(assistant.locator("#tutor-availability")).toContainText(/response times vary/i);
+  await expect(assistant.locator("#tutor-availability")).toContainText("የምላሽ ጊዜ ይለያያል");
+  await expect(assistant.locator("#ticket-data-select option")).toContainText("የጥያቄ 1");
 
   const ticketUrl = `/api/v1/escalations/${ticketId}/reply`;
   const helperHeaders = { "X-Helper-Token": "e2e-helper-token" };

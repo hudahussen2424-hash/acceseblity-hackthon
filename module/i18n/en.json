@@ -88,6 +88,7 @@
     "jobsListTitle": "Test job listings",
     "jobsListUnavailable": "The test jobs list is unavailable right now.",
     "jobsListEmpty": "No test jobs are listed yet.",
+    "ticketRequestLabel": "Request {number} ({code})",
     "jobAccommodations": "Accommodations",
     "otherAccommodation": "Other (describe it in the note)",
     "accommodationNote": "Optional note",

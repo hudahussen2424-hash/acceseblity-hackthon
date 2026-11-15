@@ -50,6 +50,7 @@
     "voiceCommandGuideFailed": "دليل الاستخدام غير متاح. تحقق من الاتصال ثم حاول مرة أخرى.",
     "jobsListTitle": "قوائم الوظائف التجريبية",
     "jobsListUnavailable": "قائمة الوظائف التجريبية غير متاحة الآن.",
-    "jobsListEmpty": "لا توجد وظائف تجريبية مدرجة بعد."
+    "jobsListEmpty": "لا توجد وظائف تجريبية مدرجة بعد.",
+    "ticketRequestLabel": "الطلب {number} ({code})"
   }
 }

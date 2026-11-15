@@ -626,12 +626,18 @@
     _renderLearnerTickets() {
       const e = this._els;
       if (!e?.ticketData) return;
+      if (!this._pack) {
+        e.ticketData.hidden = true;
+        return;
+      }
       const selectedId = e.ticketDataSelect.value || this._learnerTickets[0]?.ticketId;
       e.ticketDataSelect.replaceChildren();
       for (const [index, ticket] of this._learnerTickets.entries()) {
         const option = document.createElement("option");
         option.value = ticket.ticketId;
-        option.textContent = `Request ${index + 1} (${ticket.ticketId.slice(-6)})`;
+        option.textContent = this._pack.strings.ticketRequestLabel
+          .replace("{number}", String(index + 1))
+          .replace("{code}", ticket.ticketId.slice(-6));
         e.ticketDataSelect.append(option);
       }
       if (this._learnerTickets.some((ticket) => ticket.ticketId === selectedId)) {

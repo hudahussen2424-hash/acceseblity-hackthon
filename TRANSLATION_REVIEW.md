@@ -6,14 +6,14 @@ This inventory identifies language coverage and fallback behavior for fluent-spe
 
 | Language | Widget strings (`module/i18n`) | Course content (`demo/data/content.json`) | Job content (`demo/data/jobs.json`) | API answer/refusal | Backend voice guide | Review status |
 |---|---:|---:|---:|---:|---:|---|
-| English (`en`) | 131/131 | 5/5 | 8/8 base listings | 2/2 | 5/5 steps | Needs review |
-| Amharic (`am`) | 131/131 | 5/5 | 8/8 translated titles/details | 2/2 | 5/5 steps | Needs fluent-speaker review |
-| Tigrinya (`ti`) | 131/131 | 5/5 | 8/8 translated | 2/2 | 5/5 steps | Needs fluent-speaker review |
-| Afaan Oromo (`om`) | 131/131 | 5/5 | 8/8 translated | 2/2 | 5/5 steps | Needs fluent-speaker review |
-| Somali (`so`) | 131/131 | 5/5 | 8/8 translated | 2/2 | 5/5 steps | Needs fluent-speaker review |
-| Arabic (`ar`) | 48/131; 83 widget strings fall back to English | 0/5 translated; answers can fall back to English | 0/8 translated; content falls back to English | 2/2 | 5/5 steps | Explicitly incomplete; fluent-speaker translation/review pending |
+| English (`en`) | 132/132 | 5/5 | 8/8 base listings | 2/2 | 5/5 steps | Needs review |
+| Amharic (`am`) | 132/132 | 5/5 | 8/8 translated titles/details | 2/2 | 5/5 steps | Needs fluent-speaker review |
+| Tigrinya (`ti`) | 132/132 | 5/5 | 8/8 translated | 2/2 | 5/5 steps | Needs fluent-speaker review |
+| Afaan Oromo (`om`) | 132/132 | 5/5 | 8/8 translated | 2/2 | 5/5 steps | Needs fluent-speaker review |
+| Somali (`so`) | 132/132 | 5/5 | 8/8 translated | 2/2 | 5/5 steps | Needs fluent-speaker review |
+| Arabic (`ar`) | 49/132; 83 widget strings fall back to English | 0/5 translated; answers can fall back to English | 0/8 translated; content falls back to English | 2/2 | 5/5 steps | Explicitly incomplete; fluent-speaker translation/review pending |
 
-Counts were read from the checked-in locale, course, and job data on 2026-11-17. They measure field coverage only; they do not establish translation accuracy, reading level, screen-reader pronunciation, or cultural suitability.
+Counts were read from the checked-in locale, course, and job data on 2026-11-16. They measure field coverage only; they do not establish translation accuracy, reading level, screen-reader pronunciation, or cultural suitability.
 
 ## Fallback and review notes
 

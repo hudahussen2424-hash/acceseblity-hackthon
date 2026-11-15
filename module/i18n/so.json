@@ -88,6 +88,7 @@
     "jobsListTitle": "Liiska shaqooyinka tijaabada",
     "jobsListUnavailable": "Liiska shaqooyinka tijaabada hadda lama heli karo.",
     "jobsListEmpty": "Weli shaqooyin tijaabo ah lama qorin.",
+    "ticketRequestLabel": "Codsi {number} ({code})",
     "jobAccommodations": "Habaynno",
     "otherAccommodation": "Mid kale (ku sharax qoraalka)",
     "accommodationNote": "Qoraal ikhtiyaari ah",

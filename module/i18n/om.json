@@ -88,6 +88,7 @@
     "jobsListTitle": "Tarree hojii yaalii",
     "jobsListUnavailable": "Tarreen hojii yaalii yeroo ammaa hin argamu.",
     "jobsListEmpty": "Hojii yaalii hanga ammaatti hin tarreeffamne.",
+    "ticketRequestLabel": "Gaaffii {number} ({code})",
     "jobAccommodations": "Deeggarsa hojii",
     "otherAccommodation": "Kan biraa (yaadannoo keessatti ibsi)",
     "accommodationNote": "Yaadannoo filannoo",
