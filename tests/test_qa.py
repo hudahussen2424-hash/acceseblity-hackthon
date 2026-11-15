@@ -44,6 +44,33 @@ def test_provider_failure_falls_back_to_best_section(monkeypatch):
     assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
 
 
+def test_provider_answer_only_returns_its_validated_citation(monkeypatch):
+    monkeypatch.setenv("THRESHOLD", "0.1")
+    provider = FakeProvider({"text": "AI can help organize spreadsheets.", "source_ids": ["ai-va"]})
+    result = asyncio.run(answer_question("How does artificial intelligence help virtual assistants?", "en", SECTIONS, provider))
+    assert result["mode"] == "ai"
+    assert result["answer"] == "AI can help organize spreadsheets."
+    assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
+
+
+@pytest.mark.parametrize("source_ids", [None, [], ["not-retrieved"]])
+def test_uncited_or_unknown_provider_sources_fall_back_to_retrieval(monkeypatch, source_ids):
+    monkeypatch.setenv("THRESHOLD", "0.1")
+    provider = FakeProvider({"text": "Unsupported model claim.", "source_ids": source_ids})
+    result = asyncio.run(answer_question("How does artificial intelligence help virtual assistants?", "en", SECTIONS, provider))
+    assert result["mode"] == "search"
+    assert "automate email drafting" in result["answer"]
+    assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
+
+
+def test_no_match_and_sensitive_answers_have_no_unrelated_sources(monkeypatch):
+    monkeypatch.setenv("THRESHOLD", "0.5")
+    unrelated = asyncio.run(answer_question("Where can I find the moon?", "en", SECTIONS))
+    sensitive = asyncio.run(answer_question("Can you give me legal advice?", "en", SECTIONS))
+    assert unrelated["sources"] == []
+    assert sensitive["sources"] == []
+
+
 @pytest.mark.parametrize("question, language", [
     ("Can you give me legal advice?", "en"),
     ("Which medicine should I take for this symptom?", "en"),

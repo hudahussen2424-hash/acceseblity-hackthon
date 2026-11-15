@@ -206,6 +206,7 @@
       this._screenShareGeneration = 0;
       this._screenShareStarting = false;
       this._lastPageFocusedElement = null;
+      this._pendingTutorTicketId = "";
       this._rememberPageFocus = (event) => {
         const target = event.composedPath?.()[0] || event.target;
         if (!this.shadowRoot?.contains(target)) this._lastPageFocusedElement = target;
@@ -220,8 +221,10 @@
       this._built = true;
       this._storageKey = `db-assistant:${location.pathname}:${this.id || "default"}`;
       this._queueKey = `${this._storageKey}:offline-questions`;
+      this._pendingTutorKey = `${this._storageKey}:pending-tutor-ticket`;
       this._restore();
       this._render();
+      this._restorePendingTutorTicket();
       this._bind();
       this._registerServiceWorker();
       this._loadI18n();
@@ -407,8 +410,8 @@
           :host([theme="dark"]) .error { color: #fca5a5; }
           :host([theme="dark"]) textarea::placeholder { color: #cbd5e1; }
           #send { background: var(--assistant-primary, #002b56); color: white; border: 2px solid var(--assistant-primary, #002b56); }
-          @media (max-width: 480px) {
-            .panel { inset-inline: 0; inset-block-end: 0; width: 100%; max-height: min(70vh, calc(100vh - 10rem)); border-radius: 8px 8px 0 0; padding: 12px; }
+          @media (max-width: 720px) {
+            .panel { inset-inline: 0; inset-block-end: 0; width: 100%; max-height: min(70vh, calc(100vh - 4rem)); border-radius: 8px 8px 0 0; padding: 12px; }
             .log { max-height: 24vh; }
             .launcher { inset-inline-end: 12px; inset-block-end: 12px; }
           }
@@ -439,6 +442,7 @@
                 <button type="button" class="secondary" id="stop-voice" hidden></button>
                 <button type="button" class="secondary" id="read-back" hidden></button>
               </div>
+              <p id="voice-help" role="note"></p>
               <p id="voice-status" class="voice-status" role="status" aria-live="polite" aria-atomic="true"></p>
               <div class="voice-note" id="voice-note" hidden><strong id="voice-note-label"></strong><audio id="voice-player" aria-labelledby="voice-note-label" controls></audio></div>
               <button type="submit" id="send"></button>
@@ -472,6 +476,7 @@
                 <p id="screen-share-status" class="error" role="status" aria-live="polite"></p>
               </section>
               <p id="escalation-status" class="error" role="status" aria-live="polite"></p>
+              <button type="button" class="secondary" id="check-tutor-reply" hidden></button>
               <button type="submit" id="send-escalation"></button>
             </form>
           </div>
@@ -501,9 +506,11 @@
         error: $("question-error"),
         send: $("send"), microphone: $("microphone"), stopVoice: $("stop-voice"), readBack: $("read-back"),
         voiceStatus: $("voice-status"), voiceNote: $("voice-note"), voiceNoteLabel: $("voice-note-label"), voicePlayer: $("voice-player"),
+        voiceHelp: $("voice-help"),
         escalation: $("escalation"), escalationNoteLabel: $("escalation-note-label"), escalationNote: $("escalation-note"),
         escalationPhoneLabel: $("escalation-phone-label"), escalationPhone: $("escalation-phone"), phoneError: $("phone-error"),
-        consent: $("consent"), consentLabel: $("consent-label"), escalationStatus: $("escalation-status"), sendEscalation: $("send-escalation"),
+        consent: $("consent"), consentLabel: $("consent-label"), escalationStatus: $("escalation-status"),
+        checkTutorReply: $("check-tutor-reply"), sendEscalation: $("send-escalation"),
         screenShareTitle: $("screen-share-title"), screenShareNote: $("screen-share-note"),
         screenShareConsent: $("screen-share-consent"), screenShareConsentLabel: $("screen-share-consent-label"),
         screenShareStart: $("screen-share-start"), screenScreenshotLabel: $("screen-screenshot-label"),
@@ -565,6 +572,7 @@
       e.stopVoice.addEventListener("click", () => this._stopVoice());
       e.readBack.addEventListener("click", () => this._speakText(e.input.value, this._pack.lang, null, e.voiceStatus));
       e.escalation.addEventListener("submit", (event) => this._submitEscalation(event));
+      e.checkTutorReply.addEventListener("click", () => this._checkTutorReply());
       e.accommodationForm.addEventListener("submit", (event) => this._submitAccommodation(event));
       e.accommodationJob.addEventListener("change", () => this._populateAccommodationOptions());
       this._escapeHandler = (event) => {
@@ -587,6 +595,15 @@
       }
     }
 
+    _restorePendingTutorTicket() {
+      try {
+        this._pendingTutorTicketId = localStorage.getItem(this._pendingTutorKey) || "";
+      } catch {
+        this._pendingTutorTicketId = "";
+      }
+      this._els.checkTutorReply.hidden = !this._pendingTutorTicketId;
+    }
+
     _save() {
       try {
         localStorage.setItem(this._storageKey, JSON.stringify(this._messages));
@@ -607,13 +624,16 @@
       const lang = message.lang || this._pack?.lang || "en";
       const isAssistant = message.role === "assistant";
       const div = document.createElement("div");
-      div.className = `message ${isAssistant ? "message-assistant" : "message-user"}`;
+      const isTutor = message.role === "tutor";
+      div.className = `message ${isAssistant || isTutor ? "message-assistant" : "message-user"}`;
       div.dir = "auto";
       div.lang = lang;
 
       const author = document.createElement("div");
       author.className = "message-author";
-      const authorName = isAssistant
+      const authorName = isTutor
+        ? (this._pack?.strings.tutor || (lang === "am" ? am.strings.tutor : en.strings.tutor))
+        : isAssistant
         ? (this._pack?.strings.assistant || (lang === "am" ? am.strings.assistant : en.strings.assistant))
         : (this._pack?.strings.you || (lang === "am" ? am.strings.you : en.strings.you));
       author.textContent = authorName;
@@ -647,12 +667,16 @@
         div.append(listen, listenStatus);
       }
 
-      if (isAssistant && message.linkUrl && message.linkTitle) {
+      const links = Array.isArray(message.links)
+        ? message.links
+        : (message.linkUrl && message.linkTitle ? [{ url: message.linkUrl, title: message.linkTitle }] : []);
+      for (const source of isAssistant ? links : []) {
+        if (!source?.url || !source?.title) continue;
         const link = document.createElement("a");
         link.className = "course-link";
-        link.href = message.linkUrl;
+        link.href = source.url;
         const prefix = this._pack?.strings.readInCourse || (lang === "am" ? am.strings.readInCourse : en.strings.readInCourse);
-        link.textContent = `${prefix}: ${message.linkTitle}`;
+        link.textContent = `${prefix}: ${source.title}`;
         div.appendChild(link);
       }
 
@@ -685,6 +709,7 @@
           timestamp,
           linkUrl: message.linkUrl,
           linkTitle: message.linkTitle,
+          links: message.links,
           sectionId: message.sectionId,
           score: message.score,
           showPerson: message.showPerson
@@ -732,6 +757,7 @@
       write(e.microphone, "microphone");
       e.microphone.setAttribute("aria-label", s.microphone);
       e.microphone.lang = pack.lang;
+      write(e.voiceHelp, "speechLimitations");
       write(e.stopVoice, "stop");
       write(e.readBack, "readBack");
       write(e.voiceNoteLabel, "voiceNote");
@@ -739,6 +765,7 @@
       write(e.escalationPhoneLabel, "phoneLabel");
       write(e.consentLabel, "consent");
       write(e.sendEscalation, "sendEscalation");
+      write(e.checkTutorReply, "checkTutorReply");
       write(e.screenShareTitle, "screenShareTitle");
       write(e.screenShareNote, "screenShareNote");
       write(e.screenShareConsentLabel, "screenShareConsent");
@@ -760,6 +787,7 @@
       e.launcher.disabled = false;
       e.english.setAttribute("aria-pressed", pack.lang === "en");
       e.amharic.setAttribute("aria-pressed", pack.lang === "am");
+      e.checkTutorReply.hidden = !this._pendingTutorTicketId;
       this._populateAccommodationChoices();
       if (this._errorKey) this._setError(this._errorKey);
       this._renderMessages();
@@ -803,9 +831,12 @@
         if (!response.ok) return false;
         const result = await response.json();
         if (typeof result.answer !== "string" || !result.answer.trim()) return false;
-        const source = Array.isArray(result.sources) ? result.sources[0] : null;
+        const links = Array.isArray(result.sources)
+          ? result.sources.filter((source) => typeof source?.url === "string" && source.url)
+            .map((source) => ({ url: source.url, title: source.title || source.type || "Source" }))
+          : [];
         this._appendMessage({ role: "assistant", text: result.answer, lang: language,
-          linkUrl: source?.url, linkTitle: source?.title || source?.type || "Source" });
+          links });
         return true;
       } catch { return false; }
     }
@@ -1117,8 +1148,37 @@
 
     _openEscalation() {
       this._els.escalation.hidden = false;
+      this._els.checkTutorReply.hidden = !this._pendingTutorTicketId;
       this._els.escalationNote.focus();
       this._emit("person", {});
+    }
+
+    async _checkTutorReply() {
+      const e = this._els;
+      if (!this._pendingTutorTicketId) return;
+      e.checkTutorReply.disabled = true;
+      e.escalationStatus.textContent = this._pack.strings.checkingTutorReply;
+      try {
+        const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+        const response = await fetch(`${base}/api/v1/escalations/${encodeURIComponent(this._pendingTutorTicketId)}`);
+        if (!response.ok) throw new Error("Tutor reply could not be checked.");
+        const ticket = await response.json();
+        if (ticket.status === "answered" && typeof ticket.reply === "string" && ticket.reply.trim()) {
+          this._appendMessage({ role: "tutor", text: ticket.reply.trim(), lang: ticket.language || this._pack.lang });
+          e.escalationStatus.textContent = this._pack.strings.tutorReplyAvailable;
+          this._pendingTutorTicketId = "";
+          try { localStorage.removeItem(this._pendingTutorKey); } catch { /* The reply is still shown in this chat. */ }
+          e.checkTutorReply.hidden = true;
+        } else if (ticket.status === "waiting") {
+          e.escalationStatus.textContent = this._pack.strings.tutorReplyPending;
+        } else {
+          throw new Error("Tutor reply could not be checked.");
+        }
+      } catch {
+        e.escalationStatus.textContent = this._pack.strings.checkTutorReplyFailed;
+      } finally {
+        e.checkTutorReply.disabled = false;
+      }
     }
 
     _openAccommodation() {
@@ -1387,6 +1447,10 @@
         });
         if (!response.ok) throw new Error("Escalation send failed");
         const result = await response.json();
+        if (typeof result.ticketId !== "string" || !result.ticketId) throw new Error("Escalation ticket ID was missing");
+        this._pendingTutorTicketId = result.ticketId;
+        try { localStorage.setItem(this._pendingTutorKey, this._pendingTutorTicketId); } catch { /* Keep reply checks available until the page closes. */ }
+        e.checkTutorReply.hidden = false;
         e.escalationStatus.textContent = this._pack.strings.escalationSent;
         this._emit("escalated", { ticketId: result.ticketId });
         e.escalationNote.value = "";

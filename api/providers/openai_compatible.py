@@ -6,15 +6,18 @@ import urllib.request
 
 
 SYSTEM_PROMPT = (
-    "Answer ONLY from the provided sections, in the learner's language ({language}). "
-    "If the answer is not in them, reply exactly NOT_FOUND. Do not give medical, legal or "
-    "immigration advice. Keep it under 120 words and plain language."
+    "Answer only from the provided sections, in the learner's language ({language}). "
+    "Every factual claim must be supported by at least one section. Return only a JSON object "
+    "with keys text and source_ids; source_ids must contain the exact IDs of the sections "
+    "supporting the answer. If the sections do not answer the question, return "
+    '{"text":"NOT_FOUND","source_ids":[]}. Do not give medical, legal or immigration advice. '
+    "Keep text under 120 words and use plain language."
 )
 
 
 def _request(url: str, model: str, question: str, sections: list[dict], language: str, key: str | None) -> dict:
     context = "\n\n".join(
-        f"TITLE: {section.get('title', '')}\nTEXT: {section.get('text', '')}"
+        f"ID: {section.get('id', '')}\nTITLE: {section.get('title', '')}\nTEXT: {section.get('text', '')}"
         for section in sections[:2]
     )
     body = json.dumps({
@@ -32,8 +35,19 @@ def _request(url: str, model: str, question: str, sections: list[dict], language
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
     with urllib.request.urlopen(request, timeout=5) as response:
         result = json.loads(response.read().decode("utf-8"))
-    text = result["choices"][0]["message"]["content"]
-    return {"text": text.strip() if isinstance(text, str) else None}
+    content = result["choices"][0]["message"]["content"]
+    if not isinstance(content, str):
+        return {"text": None, "source_ids": []}
+    try:
+        answer = json.loads(content)
+    except json.JSONDecodeError:
+        return {"text": None, "source_ids": []}
+    if not isinstance(answer, dict):
+        return {"text": None, "source_ids": []}
+    return {
+        "text": answer.get("text") if isinstance(answer.get("text"), str) else None,
+        "source_ids": answer.get("source_ids") if isinstance(answer.get("source_ids"), list) else [],
+    }
 
 
 async def complete(url: str, model: str, question: str, sections: list[dict], language: str, key: str | None = None) -> dict:
