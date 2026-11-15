@@ -35,6 +35,7 @@
     "sendEscalation": "Namaaf ergi",
     "voiceNote": "Barsiisaaf ergaa sagalee",
     "escalationSent": "Gaaffiin kee tarree eegumsaa keessa galfameera. Barsiisonni sa'aatii 23:00 dabalatee argamuu dhiisuu danda'u. Yeroon deebii ni garaagara; waadaan hin jiru. Asitti deebi'iitii «Deebii barsiisaa ilaali» filadhu.",
+    "ticketReference": "Lakkoofsa gaaffii: {ticketId}.",
     "tutorAvailability": "Barsiisonni sa'aatii 23:00 dabalatee argamuu dhiisuu danda'u. Gaaffiin tarree eegumsaa keessa galfama; yeroon deebii ni garaagara, waadaanis hin jiru. Asitti deebi'iitii «Deebii barsiisaa ilaali» filadhu.",
     "checkTutorReply": "Deebii barsiisaa ilaali",
     "checkingTutorReply": "Deebiin barsiisaa ilaalamaa jira…",

@@ -28,6 +28,7 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
   await assistant.locator("#send-escalation").click();
   const ticketId = await ticketIdPromise;
   expect(ticketId).toMatch(/^[0-9a-f-]{36}$/i);
+  await expect(assistant.locator("#escalation-status")).toContainText(ticketId);
   await expect(assistant.locator("#check-tutor-reply")).toBeVisible();
   await expect(assistant.locator("#tutor-availability")).toContainText(/response times vary/i);
 
@@ -89,6 +90,34 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
   await expect(returnedAssistant.locator("#escalation-status")).toContainText("Local assistant data cleared");
   await expect(returnedAssistant.locator("#messages .message")).toHaveCount(0);
   expect(await page.evaluate((key) => localStorage.getItem(key), await returnedAssistant.evaluate((element) => element._storageKey))).toBeNull();
+});
+
+test("accommodation request announces its queued ticket ID", async ({ page, request }) => {
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("api", "http://127.0.0.1:8001"));
+  await assistant.locator("#launcher").click();
+  await assistant.locator("#accommodation-open").click();
+  await expect.poll(() => assistant.locator("#accommodation-job option").count()).toBeGreaterThan(0);
+  await assistant.locator("#accommodation-choice").selectOption({ index: 0 });
+
+  let ticketId;
+  try {
+    const ticketIdPromise = assistant.evaluate((element) => new Promise((resolve) => {
+      element.addEventListener("db-assistant:escalated", (event) => resolve(event.detail.ticketId), { once: true });
+    }));
+    await assistant.locator("#accommodation-send").click();
+    ticketId = await ticketIdPromise;
+    expect(ticketId).toMatch(/^[0-9a-f-]{36}$/i);
+    await expect(assistant.locator("#accommodation-status")).toContainText(ticketId);
+  } finally {
+    if (ticketId) {
+      await request.delete(`http://127.0.0.1:8001/api/v1/escalations/${ticketId}`, {
+        headers: { "X-Helper-Token": "e2e-helper-token" }
+      });
+    }
+  }
 });
 
 test("helper can send an interim update and later close the same ticket", async ({ page, request }) => {

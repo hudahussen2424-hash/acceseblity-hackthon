@@ -59,6 +59,24 @@ test("assistant stays within narrow viewports and page controls remain keyboard 
   }
 });
 
+test("launcher stays in document flow at compact zoom-like viewport widths", async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 800 });
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => {
+    const control = document.createElement("button");
+    control.id = "page-control";
+    control.textContent = "Page control";
+    element.before(control);
+  });
+
+  expect(await assistant.locator("#launcher").evaluate((element) => getComputedStyle(element).position)).toBe("static");
+  const controlBox = await page.locator("#page-control").boundingBox();
+  const launcherBox = await assistant.locator("#launcher").boundingBox();
+  expect(controlBox.y + controlBox.height).toBeLessThanOrEqual(launcherBox.y);
+});
+
 test("speech recognition fills the question for review without sending it", async ({ page }) => {
   await page.addInitScript(() => {
     class FakeSpeechRecognition {

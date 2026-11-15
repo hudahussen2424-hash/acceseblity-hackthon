@@ -35,6 +35,7 @@
     "sendEscalation": "U dir qof",
     "voiceNote": "Farriin cod ah oo macallinka loo dirayo",
     "escalationSent": "Codsigaaga safka ayaa la geliyey. Macallimiintu way maqnaan karaan, xataa 23:00. Waqtiga jawaabtu wuu kala duwan yahay, mana jiro dammaanad. Halkan ku soo noqo oo dooro Hubi jawaabta macallinka.",
+    "ticketReference": "Aqoonsiga codsiga: {ticketId}.",
     "tutorAvailability": "Macallimiintu way maqnaan karaan, xataa 23:00. Codsiyada safka ayaa la geliyaa, laakiin waqtiga jawaabtu wuu kala duwan yahay, mana jiro dammaanad. Halkan ku soo noqo oo dooro Hubi jawaabta macallinka.",
     "checkTutorReply": "Hubi jawaabta macallinka",
     "checkingTutorReply": "Jawaabta macallinka ayaa la hubinayaa…",

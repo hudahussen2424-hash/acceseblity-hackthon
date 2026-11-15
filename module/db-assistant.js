@@ -48,6 +48,7 @@
       sendEscalation: "Send to a person",
       voiceNote: "Voice note for tutor",
       escalationSent: "Your request is queued. Tutors may be unavailable, including at 23:00. Response times vary and are not guaranteed. Return here and choose Check for tutor reply.",
+      ticketReference: "Ticket ID: {ticketId}.",
       tutorAvailability: "Tutors may be unavailable, including at 23:00. Requests are queued, but response times vary and are not guaranteed. Return here and choose Check for tutor reply.",
       checkTutorReply: "Check for tutor reply",
       checkingTutorReply: "Checking for a tutor reply…",
@@ -85,7 +86,7 @@
       accommodationFailed: "Your request could not be sent. Please try again.",
       screenShareConsent: "I consent to sharing my screen or page details with a tutor. Sharing starts only after I press a button. Live video is not recorded or stored. Page sharing sends this page URL, the focused element's accessible name and HTML, page headings, and only a screenshot I select; these are attached to a tutor request.",
       screenShareTitle: "Share with a tutor",
-      screenShareNote: "Use HTTPS for screen capture. Desktop uses direct demo WebRTC with no configured STUN/TURN relay, so some networks may block it. Android Chrome sends page details and an optional image only, not live video.",
+      screenShareNote: "Use HTTPS for screen capture. Desktop uses direct demo WebRTC with no configured STUN/TURN relay, so some networks may block it. On Android Chrome, live screen sharing is unavailable; you can share page details and optionally upload a screenshot instead.",
       screenShareStart: "Share my screen",
       screenContextStart: "Show my tutor where I am",
       screenScreenshot: "Optional screenshot (image)",
@@ -146,6 +147,7 @@
       voiceNote: "ለአስተማሪ የድምፅ መልዕክት",
       cloudConsent: "አማራጭ፦ ከተመረጠ ጥያቄዎና የተዛመደው የትምህርት ክፍል በዚህ ጣቢያ ወደተዋቀረው የደመና AI ሊላኩ ይችላሉ። ካልተመረጠ የትምህርት ፍለጋ ይጠቀማል።",
       escalationSent: "ጥያቄዎ በወረፋ ላይ ተቀምጧል። አስተማሪዎች በ23:00 ላይም ላይገኙ ይችላሉ። የምላሽ ጊዜ ይለያያል እና ዋስትና የለውም። ተመልሰው እዚህ ይምጡና የአስተማሪ ምላሽን ይፈትሹ።",
+      ticketReference: "የጥያቄ መለያ፦ {ticketId}።",
       tutorAvailability: "አስተማሪዎች በ23:00 ላይም ላይገኙ ይችላሉ። ጥያቄዎች በወረፋ ይቀመጣሉ፤ የምላሽ ጊዜ ይለያያል እና ዋስትና የለውም። ተመልሰው እዚህ ይምጡና የአስተማሪ ምላሽን ይፈትሹ።",
       checkTutorReply: "የአስተማሪ ምላሽ ይፈትሹ",
       checkingTutorReply: "የአስተማሪ ምላሽ በመፈተሽ ላይ…",
@@ -183,7 +185,7 @@
       accommodationFailed: "ጥያቄዎ ሊላክ አልቻለም። እንደገና ይሞክሩ።",
       screenShareConsent: "ማያዬን ወይም የገጹን መረጃ ለአስተማሪ ለማጋራት እስማማለሁ። ማጋራት የሚጀምረው አዝራሩን ከጫንኩ ብቻ ነው። ቀጥታ ቪዲዮ አይቀዳም ወይም አይቀመጥም። የገጽ ማጋራት የገጹን URL፣ የተመረጠውን አባል ተደራሽ ስምና HTML፣ የገጹን ርዕሶችና እኔ የመረጥኩትን ምስል ብቻ ይልካል፤ እነዚህም ከአስተማሪ ጥያቄ ጋር ይያያዛሉ።",
       screenShareTitle: "ከአስተማሪ ጋር አጋራ",
-      screenShareNote: "የማያ ቀረጻ ለመጠቀም HTTPS ያስፈልጋል። ዴስክቶፕ ቀጥታ የሙከራ WebRTC ግንኙነት ይጠቀማል፤ STUN/TURN ማስተላለፊያ ስላልተዋቀረ አንዳንድ ኔትወርኮች ሊከለክሉት ይችላሉ። Android Chrome የገጽ መረጃና አማራጭ ምስል ብቻ ይልካል፤ ቀጥታ ቪዲዮ አይደለም።",
+      screenShareNote: "የማያ ማጋራት ለመጠቀም HTTPS ያስፈልጋል። ዴስክቶፕ ቀጥታ የሙከራ WebRTC ግንኙነት ይጠቀማል፤ STUN/TURN ማስተላለፊያ ስላልተዋቀረ አንዳንድ ኔትወርኮች ሊከለክሉት ይችላሉ። በAndroid Chrome ቀጥታ የማያ ማጋራት አይገኝም፤ በምትኩ የገጹን መረጃ ማጋራትና ከፈለጉ የማያ ምስል መጫን ይችላሉ።",
       screenShareStart: "ማያዬን አጋራ",
       screenContextStart: "ያለሁበትን ለአስተማሪ አሳይ",
       screenScreenshot: "አማራጭ የማያ ምስል",
@@ -433,7 +435,7 @@
     _render() {
       this.shadowRoot.innerHTML = `
         <style>
-      :host { all: initial; font-family: system-ui, sans-serif; color: #1a1a1a; font-size: 16px; line-height: 1.5; }
+      :host { all: initial; display: block; font-family: system-ui, sans-serif; color: #1a1a1a; font-size: 16px; line-height: 1.5; }
           :host([lang="am"]) { line-height: 1.7; }
           *, *::before, *::after { box-sizing: border-box; }
           button, input, textarea { font: inherit; letter-spacing: normal; text-transform: none; }
@@ -493,7 +495,7 @@
           @media (max-width: 720px) {
             .panel { inset-inline: 0; inset-block-end: 0; width: 100%; max-height: min(70vh, calc(100vh - 4rem)); border-radius: 8px 8px 0 0; padding: 12px; }
             .log { max-height: 24vh; }
-            .launcher { inset-inline-end: 12px; inset-block-end: 12px; }
+            .launcher { position: static; display: block; margin: 12px 12px 12px auto; max-width: calc(100vw - 24px); }
           }
           @media (prefers-reduced-motion: reduce) { :host, :host * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
           @media (forced-colors: active) { button, textarea, .panel, .message-assistant { border: 2px solid CanvasText; } .person, #send, .person-action { background: ButtonFace; color: ButtonText; } }
@@ -1433,6 +1435,11 @@
       this._emit("person", {});
     }
 
+    _ticketReference(ticketId) {
+      const template = this._pack?.strings.ticketReference || en.strings.ticketReference;
+      return template.replace("{ticketId}", ticketId);
+    }
+
     async _checkTutorReply() {
       const e = this._els;
       if (!this._pendingTutorTicketId) return;
@@ -1794,7 +1801,7 @@
         this._pendingTutorTicketId = result.ticketId;
         try { localStorage.setItem(this._pendingTutorKey, this._pendingTutorTicketId); } catch { /* Keep reply checks available until the page closes. */ }
         e.checkTutorReply.hidden = false;
-        e.escalationStatus.textContent = this._pack.strings.escalationSent;
+        e.escalationStatus.textContent = `${this._pack.strings.escalationSent} ${this._ticketReference(result.ticketId)}`;
         this._emit("escalated", { ticketId: result.ticketId });
         e.escalationNote.value = "";
         e.escalationPhone.value = "";
@@ -1837,8 +1844,9 @@
         });
         if (!response.ok) throw new Error("Escalation send failed");
         const result = await response.json();
+        if (typeof result.ticketId !== "string" || !result.ticketId) throw new Error("Escalation ticket ID was missing");
         this._rememberLearnerTicket(result);
-        e.accommodationStatus.textContent = this._pack.strings.accommodationSent;
+        e.accommodationStatus.textContent = `${this._pack.strings.accommodationSent} ${this._ticketReference(result.ticketId)}`;
         this._emit("escalated", { ticketId: result.ticketId, type: "accommodation" });
         e.accommodationNote.value = "";
       } catch {
