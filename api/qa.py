@@ -59,6 +59,7 @@ async def answer_question(
             "sources": [],
             "mode": "search",
             "score": best_score,
+            "answerStatus": "refused",
         }
 
     try:
@@ -71,6 +72,7 @@ async def answer_question(
             "sources": [],
             "mode": "search",
             "score": best_score,
+            "answerStatus": "not_found",
         }
 
     best_sources = [
@@ -117,7 +119,19 @@ async def answer_question(
              **({"type": allowed_sections[source_id]["type"]} if "type" in allowed_sections[source_id] else {})}
             for source_id in verified_ids
         ]
-        return {"answer": answer_text, "sources": cited_sources, "mode": "ai", "score": best_score}
+        return {
+            "answer": answer_text,
+            "sources": cited_sources,
+            "mode": "ai",
+            "score": best_score,
+            "answerStatus": "answered",
+        }
     except Exception:
         # Non-substantiated, uncited, or unavailable model answers use the best matched course section.
-        return {"answer": best["text"], "sources": best_sources, "mode": "search", "score": best_score}
+        return {
+            "answer": best["text"],
+            "sources": best_sources,
+            "mode": "search",
+            "score": best_score,
+            "answerStatus": "answered",
+        }

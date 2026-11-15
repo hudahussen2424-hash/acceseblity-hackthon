@@ -2,10 +2,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt ./api/requirements.txt
+COPY api/requirements.txt ./api/requirements.txt
 RUN pip install --no-cache-dir -r ./api/requirements.txt
 
-COPY . ./api/
+COPY api ./api
+COPY demo ./demo
+COPY module ./module
+COPY savanna ./savanna
+COPY sw.js ./sw.js
 
 EXPOSE 8000
 

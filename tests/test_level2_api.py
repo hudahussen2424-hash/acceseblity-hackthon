@@ -29,9 +29,30 @@ def test_swagger_docs_endpoint(client):
     assert "swagger-ui" in res.text.lower() or "html" in res.headers["content-type"]
 
 
+def test_demo_site_assets_are_served_by_the_api(client):
+    lesson = client.get("/")
+    assert lesson.status_code == 200
+    assert "<db-assistant" in lesson.text
+    assert client.get("/sw.js").status_code == 200
+    assert client.get("/module/db-assistant.js").status_code == 200
+    assert client.get("/demo/data/content.json").status_code == 200
+    assert client.get("/savanna/pages/jobs.html").status_code == 200
+
+
 def test_health_endpoints_report_database_and_content_readiness(client):
     assert client.get("/health/live").json() == {"status": "ok"}
     assert client.get("/health/ready").json() == {"status": "ready"}
+
+
+def test_ask_reports_when_course_evidence_is_not_found(client, monkeypatch):
+    monkeypatch.setenv("THRESHOLD", "1.1")
+    response = client.post("/api/v1/ask", json={
+        "question": "How many moons orbit an imaginary planet?",
+        "language": "en",
+    })
+    assert response.status_code == 200
+    assert response.json()["answerStatus"] == "not_found"
+    assert response.json()["sources"] == []
 
 
 def test_cors_headers_on_api(client):

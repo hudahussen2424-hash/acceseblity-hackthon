@@ -1160,6 +1160,16 @@ def helper_page() -> FileResponse:
     return FileResponse(ROOT / "static" / "helper.html")
 
 
+@app.get("/", include_in_schema=False)
+def lesson_page() -> FileResponse:
+    return FileResponse(ROOT.parent / "savanna" / "pages" / "concept-with-navigation.html")
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker() -> FileResponse:
+    return FileResponse(ROOT.parent / "sw.js", media_type="application/javascript")
+
+
 static_dir = ROOT / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -1169,3 +1179,6 @@ app.mount("/module", StaticFiles(directory=module_dir), name="module")
 
 demo_dir = ROOT.parent / "demo" if (ROOT.parent / "demo").exists() else static_dir
 app.mount("/demo", StaticFiles(directory=demo_dir, html=True), name="demo")
+
+savanna_dir = ROOT.parent / "savanna" if (ROOT.parent / "savanna").exists() else static_dir
+app.mount("/savanna", StaticFiles(directory=savanna_dir, html=True), name="savanna")

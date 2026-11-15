@@ -47,6 +47,7 @@ def test_below_threshold_does_not_call_provider(monkeypatch):
     assert result["mode"] == "search"
     assert result["answer"] == "I could not find this in the course."
     assert result["sources"] == []
+    assert result["answerStatus"] == "not_found"
 
 
 def test_provider_failure_falls_back_to_best_section(monkeypatch):
@@ -57,6 +58,7 @@ def test_provider_failure_falls_back_to_best_section(monkeypatch):
     assert result["mode"] == "search"
     assert "automate email drafting" in result["answer"]
     assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
+    assert result["answerStatus"] == "answered"
 
 
 def test_provider_answer_only_returns_its_validated_citation(monkeypatch):
@@ -67,6 +69,7 @@ def test_provider_answer_only_returns_its_validated_citation(monkeypatch):
     assert result["mode"] == "ai"
     assert result["answer"] == excerpt
     assert result["sources"] == [{"title": SECTIONS[0]["title"], "url": "/lesson#ai-va"}]
+    assert result["answerStatus"] == "answered"
 
 
 @pytest.mark.parametrize("source_ids", [None, [], ["not-retrieved"]])
@@ -141,6 +144,7 @@ def test_sensitive_topic_is_refused_without_provider_call(question, language):
     assert result["answer"] == expected
     assert result["mode"] == "search"
     assert result["sources"] == []
+    assert result["answerStatus"] == "refused"
 
 
 @pytest.mark.parametrize("language", ["ti", "om", "so"])

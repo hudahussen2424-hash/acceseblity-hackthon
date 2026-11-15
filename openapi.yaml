@@ -45,7 +45,7 @@ paths:
         required: true
       responses:
         '200':
-          description: Successful Response
+          description: Successful response; answerStatus is answered, not_found, or refused.
           content:
             application/json:
               schema:

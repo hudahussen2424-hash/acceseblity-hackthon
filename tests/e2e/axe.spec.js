@@ -32,3 +32,32 @@ for (const [name, route] of pages) {
     expect(severe, JSON.stringify(report, null, 2)).toEqual([]);
   });
 }
+
+test("axe: queued-question controls", async ({ page, context }) => {
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await page.waitForFunction(() => document.querySelector("db-assistant")?._sections?.length > 0);
+  await assistant.locator("#launcher").click();
+  await context.setOffline(true);
+  try {
+    await assistant.locator("#question").fill("How does the course describe virtual assistant work?");
+    await assistant.locator("#send").click();
+    await expect(assistant.locator("#offline-queue")).toBeVisible();
+    await assistant.locator("#offline-queue").getByRole("button", { name: "Edit" }).click();
+
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
+    const severe = results.violations.filter((violation) => ["critical", "serious"].includes(violation.impact));
+    const report = severe.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      help: violation.help,
+      nodes: violation.nodes.map((node) => ({ target: node.target, summary: node.failureSummary }))
+    }));
+    expect(severe, JSON.stringify(report, null, 2)).toEqual([]);
+  } finally {
+    await context.setOffline(false);
+  }
+});

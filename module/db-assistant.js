@@ -70,6 +70,26 @@
       clearLocalDataFailed: "Could not clear this browser's assistant data. Use the browser's site-data controls.",
       escalationFailed: "Your request could not be sent. Check your connection and try again.",
       offlineSaved: "Saved on this phone. It will send when you are online.",
+      questionSendFailed: "The assistant could not accept this question. Review it and try again.",
+      offlineQueueTitle: "Questions waiting to send",
+      offlineQueueWaiting: "Waiting for a connection.",
+      offlineQueueRetrying: "Sending this question…",
+      offlineQueueRetryFailed: "Could not send this question. It is still queued; check your connection and retry.",
+      offlineQueueSaved: "Question updated.",
+      offlineQueueSent: "Queued question sent.",
+      offlineQueueStorageFailed: "This question could not be saved on this device. Keep this page open and try again when connected.",
+      offlineQueueEdit: "Edit",
+      offlineQueueEditLabel: "Edit queued question",
+      offlineQueueSave: "Save",
+      offlineQueueCancel: "Cancel",
+      offlineQueueRetry: "Retry",
+      offlineQueueRemove: "Remove",
+      cachedAnswerEvidence: "Answer from course content available offline; it may be out of date.",
+      notFoundEvidence: "No matching answer was found in the course content.",
+      feedbackUnhelpful: "Flag as unhelpful",
+      feedbackIncorrect: "Flag as incorrect",
+      feedbackSent: "Thanks. Your feedback was sent without your question text.",
+      feedbackFailed: "Feedback could not be sent. Check your connection and try again.",
       phoneLabel: "Phone number (optional)",
       phoneInvalid: "Enter an Ethiopian number starting with 09, 07, +2519, or +2517.",
       accommodationButton: "I need an accommodation for my interview",
@@ -169,6 +189,26 @@
       clearLocalDataFailed: "በዚህ አሳሽ ያለውን የረዳት መረጃ ማጽዳት አልተቻለም። የአሳሹን የጣቢያ መረጃ ቁጥጥሮች ይጠቀሙ።",
       escalationFailed: "ጥያቄዎ ሊላክ አልቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
       offlineSaved: "በዚህ ስልክ ተቀምጧል። ኢንተርኔት ሲኖር ይላካል።",
+      questionSendFailed: "ረዳቱ ይህን ጥያቄ መቀበል አልቻለም። ጥያቄዎን ይመልከቱና እንደገና ይሞክሩ።",
+      offlineQueueTitle: "ለመላክ የሚጠባበቁ ጥያቄዎች",
+      offlineQueueWaiting: "ግንኙነት በመጠበቅ ላይ።",
+      offlineQueueRetrying: "ይህ ጥያቄ በመላክ ላይ ነው…",
+      offlineQueueRetryFailed: "ጥያቄውን መላክ አልተቻለም። በወረፋ ላይ ይቆያል፤ ግንኙነቱን ያረጋግጡና ይሞክሩ።",
+      offlineQueueSaved: "ጥያቄው ተዘምኗል።",
+      offlineQueueSent: "በወረፋ ያለው ጥያቄ ተልኳል።",
+      offlineQueueStorageFailed: "ጥያቄውን በዚህ መሣሪያ ላይ ማስቀመጥ አልተቻለም። ይህን ገጽ ክፍት ያድርጉና ግንኙነት ሲኖር እንደገና ይሞክሩ።",
+      offlineQueueEdit: "አርትዕ",
+      offlineQueueEditLabel: "በወረፋ ያለውን ጥያቄ ያርትዑ",
+      offlineQueueSave: "አስቀምጥ",
+      offlineQueueCancel: "ሰርዝ",
+      offlineQueueRetry: "እንደገና ላክ",
+      offlineQueueRemove: "አስወግድ",
+      cachedAnswerEvidence: "መልሱ ከከመስመር ውጭ ከሚገኝ የትምህርት ይዘት ነው፤ ያልዘመነ ሊሆን ይችላል።",
+      notFoundEvidence: "በትምህርቱ ይዘት ውስጥ የሚዛመድ መልስ አልተገኘም።",
+      feedbackUnhelpful: "ጠቃሚ እንዳልሆነ ምልክት ያድርጉ",
+      feedbackIncorrect: "ትክክል እንዳልሆነ ምልክት ያድርጉ",
+      feedbackSent: "እናመሰግናለን። ጥያቄዎን ሳናካትት አስተያየትዎ ተልኳል።",
+      feedbackFailed: "አስተያየት መላክ አልተቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
       phoneLabel: "የስልክ ቁጥር (አማራጭ)",
       phoneInvalid: "ትክክለኛ የኢትዮጵያ ስልክ ቁጥር ያስገቡ።",
       accommodationButton: "ለቃለ መጠይቄ ማስተካከያ እፈልጋለሁ",
@@ -268,6 +308,9 @@
       this._pendingTutorTicketId = "";
       this._cloudConsentRequired = false;
       this._assistantConfigToken = 0;
+      this._submittingQuestion = false;
+      this._retryingQuestionIds = new Set();
+      this._flushingQuestionQueue = false;
       this._rememberPageFocus = (event) => {
         const target = event.composedPath?.()[0] || event.target;
         if (!this.shadowRoot?.contains(target)) this._lastPageFocusedElement = target;
@@ -288,6 +331,7 @@
       this._restorePendingTutorTicket();
       this._restoreLearnerTickets();
       this._bind();
+      this._renderQuestionQueue();
       this._loadAssistantConfig();
       this._registerServiceWorker();
       this._loadI18n();
@@ -459,12 +503,29 @@
           .language-label, label { font-weight: 700; }
           [aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 1px; }
           .log { display: flex; flex-direction: column; gap: 12px; max-height: 40vh; overflow-y: auto; padding: 4px; }
+          .offline-queue { display: grid; gap: 10px; padding: 12px; border: 1px solid #d5e1d8; border-radius: 12px; background: #f5faf6; }
+          .offline-queue[hidden] { display: none; }
+          :host([theme="dark"]) .offline-queue { border-color: #46534a; background: #202824; }
+          .offline-queue h3, .queue-question { margin: 0; overflow-wrap: anywhere; }
+          .offline-queue h3 { font-size: 1rem; }
+          .queue-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+          .queue-item { display: grid; gap: 8px; padding: 10px; border: 1px solid #d5e1d8; border-radius: 10px; background: var(--assistant-background, #fff); }
+          .queue-status, .queue-live-status { margin: 0; font-size: .9em; }
+          .queue-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+          .queue-actions button, .queue-editor button { min-height: 40px; }
+          .queue-editor { display: grid; gap: 8px; }
+          .queue-editor[hidden] { display: none; }
+          .queue-editor textarea { width: 100%; min-height: 5rem; padding: 8px; border: 1px solid #87988c; border-radius: 8px; background: var(--assistant-background, #fff); color: var(--assistant-foreground, #17251d); }
+          .queue-live-status { color: #31583d; }
+          :host([theme="dark"]) .queue-live-status { color: #bbf7d0; }
           .message { max-width: 96%; margin: 0; padding: 12px 14px; border-radius: 16px; overflow-wrap: anywhere; }
           .message-user { align-self: flex-end; max-width: 90%; border: 1px solid #cfe2d3; border-radius: 16px 16px 4px 16px; background: #eaf4ec; color: #183322; }
           .message-assistant { align-self: flex-start; border: 1px solid #dce6de; border-radius: 16px 16px 16px 4px; background: #f8faf8; color: #18251d; }
           :host([theme="dark"]) .message-user { border-color: #47614d; background: #26382d; color: #f1f5f2; }
           :host([theme="dark"]) .message-assistant { border-color: #46534a; background: #202824; color: #f1f5f2; }
           .message-author { font-weight: 700; margin-bottom: 4px; font-size: 0.9em; color: var(--assistant-primary, #002b56); }
+          .evidence-label { margin-top: 8px; font-size: .9em; font-weight: 650; color: #46584b; }
+          :host([theme="dark"]) .evidence-label { color: #c8d6ca; }
           .course-link { display: inline-block; margin-top: 8px; color: var(--assistant-primary, #002b56); font-weight: 600; text-decoration: underline; }
           .course-link:hover, .course-link:focus { text-decoration: none; }
           :host([theme="dark"]) .course-link:focus-visible { outline-color: #bbf7d0; }
@@ -528,6 +589,11 @@
             </div>
             <p id="greeting" dir="auto"></p>
             <div class="log" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+            <section class="offline-queue" id="offline-queue" aria-labelledby="offline-queue-heading" hidden>
+              <h3 id="offline-queue-heading"></h3>
+              <ul class="queue-list" id="offline-queue-list"></ul>
+            </section>
+            <p class="queue-live-status" id="offline-queue-status" role="status" aria-live="polite" aria-atomic="true"></p>
             <form id="form" novalidate>
               <div class="field"><label id="question-label" for="question"></label>
                 <textarea id="question" name="question" dir="auto" autocomplete="off" aria-required="true"></textarea>
@@ -612,6 +678,10 @@
         languageSelect: $("language-select"),
         greeting: $("greeting"),
         log: $("messages"),
+        questionQueue: $("offline-queue"),
+        questionQueueHeading: $("offline-queue-heading"),
+        questionQueueList: $("offline-queue-list"),
+        questionQueueStatus: $("offline-queue-status"),
         form: $("form"),
         label: $("question-label"),
         input: $("question"),
@@ -858,8 +928,10 @@
       this._pendingTutorTicketId = "";
       e.checkTutorReply.hidden = true;
       e.escalationStatus.textContent = this._pack.strings.clearLocalDataDone;
+      e.questionQueueStatus.textContent = "";
       this._renderMessages();
       this._renderLearnerTickets();
+      this._renderQuestionQueue();
     }
 
     _save() {
@@ -912,6 +984,19 @@
       content.textContent = message.text;
       div.appendChild(content);
 
+      const strings = this._pack?.strings || en.strings;
+      const evidenceText = message.answerStatus === "not_found"
+        ? strings.notFoundEvidence
+        : message.cachedCourseContent
+          ? strings.cachedAnswerEvidence
+          : "";
+      if (isAssistant && evidenceText) {
+        const evidence = document.createElement("p");
+        evidence.className = "evidence-label";
+        evidence.textContent = evidenceText;
+        div.appendChild(evidence);
+      }
+
       if (isAssistant) {
         const listen = document.createElement("button");
         listen.type = "button";
@@ -945,7 +1030,7 @@
           const button = document.createElement("button");
           button.type = "button";
           button.className = "secondary";
-          button.textContent = reason === "incorrect" ? "Flag as incorrect" : "Flag as unhelpful";
+          button.textContent = reason === "incorrect" ? strings.feedbackIncorrect : strings.feedbackUnhelpful;
           button.addEventListener("click", async () => {
             button.disabled = true;
             try {
@@ -955,10 +1040,10 @@
                 body: JSON.stringify({ kind: links.length ? "source" : "answer", reason, sourceUrl: links[0]?.url || "" })
               });
               if (!response.ok) throw new Error("Feedback could not be sent.");
-              feedbackStatus.textContent = "Thanks. Your feedback was sent without your question text.";
+              feedbackStatus.textContent = strings.feedbackSent;
               for (const option of feedback.querySelectorAll("button")) option.disabled = true;
             } catch {
-              feedbackStatus.textContent = "Feedback could not be sent. Check your connection and try again.";
+              feedbackStatus.textContent = strings.feedbackFailed;
               button.disabled = false;
             }
           });
@@ -1004,7 +1089,9 @@
           sectionId: message.sectionId,
           ticketId: message.ticketId,
           score: message.score,
-          showPerson: message.showPerson
+          showPerson: message.showPerson,
+          cachedCourseContent: message.cachedCourseContent,
+          answerStatus: message.answerStatus
         });
         this._save();
       }
@@ -1096,6 +1183,7 @@
       this._populateAccommodationChoices();
       if (this._errorKey) this._setError(this._errorKey);
       this._renderMessages();
+      this._renderQuestionQueue();
       this._emit("ready", { lang: pack.lang, dir: this.dir });
     }
 
@@ -1118,12 +1206,192 @@
     _readQuestionQueue() {
       try {
         const queue = JSON.parse(localStorage.getItem(this._queueKey) || "[]");
-        return Array.isArray(queue) ? queue : [];
-      } catch { return []; }
+        if (!Array.isArray(queue)) return [];
+        const validQueue = queue.filter((item) => item && typeof item.question === "string");
+        const normalized = validQueue
+          .map((item) => ({
+            ...item,
+            id: typeof item.id === "string" ? item.id : this._newQuestionQueueId(),
+            status: item.status === "retry-failed" ? "retry-failed" : "waiting"
+          }));
+        if (normalized.length !== queue.length || normalized.some((item, index) => item.id !== queue[index]?.id)) {
+          this._writeQuestionQueue(normalized);
+        }
+        return normalized;
+      } catch {
+        if (this._els?.questionQueueStatus) {
+          this._els.questionQueueStatus.textContent = this._pack?.strings.offlineQueueStorageFailed || en.strings.offlineQueueStorageFailed;
+        }
+        return [];
+      }
     }
 
     _writeQuestionQueue(queue) {
-      try { localStorage.setItem(this._queueKey, JSON.stringify(queue)); } catch { /* Keep the current session usable if storage is full. */ }
+      try {
+        localStorage.setItem(this._queueKey, JSON.stringify(queue));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    _newQuestionQueueId() {
+      return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    _renderQuestionQueue() {
+      if (!this._els) return;
+      const { questionQueue, questionQueueHeading, questionQueueList } = this._els;
+      const strings = this._pack?.strings || en.strings;
+      const queue = this._readQuestionQueue();
+      questionQueue.hidden = queue.length === 0;
+      questionQueueHeading.textContent = `${strings.offlineQueueTitle} (${queue.length})`;
+      questionQueueList.replaceChildren();
+
+      for (const queued of queue) {
+        const row = document.createElement("li");
+        row.className = "queue-item";
+
+        const question = document.createElement("p");
+        question.className = "queue-question";
+        question.dir = "auto";
+        question.textContent = queued.question;
+
+        const status = document.createElement("p");
+        status.className = "queue-status";
+        status.setAttribute("role", "status");
+        status.setAttribute("aria-live", "polite");
+        status.textContent = this._retryingQuestionIds.has(queued.id)
+          ? strings.offlineQueueRetrying
+          : queued.status === "retry-failed" ? strings.offlineQueueRetryFailed : strings.offlineQueueWaiting;
+
+        const actions = document.createElement("div");
+        actions.className = "queue-actions";
+        const editing = this._retryingQuestionIds.has(queued.id);
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.className = "secondary";
+        edit.textContent = strings.offlineQueueEdit;
+        edit.disabled = editing;
+
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "secondary";
+        retry.textContent = strings.offlineQueueRetry;
+        retry.disabled = editing;
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "secondary";
+        remove.textContent = strings.offlineQueueRemove;
+        remove.disabled = editing;
+
+        const editor = document.createElement("form");
+        editor.className = "queue-editor";
+        editor.hidden = true;
+        const label = document.createElement("label");
+        const input = document.createElement("textarea");
+        input.id = `queued-question-${queued.id}`;
+        input.value = queued.question;
+        input.dir = "auto";
+        label.htmlFor = input.id;
+        label.textContent = strings.offlineQueueEditLabel;
+        const editorActions = document.createElement("div");
+        editorActions.className = "queue-actions";
+        const save = document.createElement("button");
+        save.type = "submit";
+        save.className = "secondary";
+        save.textContent = strings.offlineQueueSave;
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "secondary";
+        cancel.textContent = strings.offlineQueueCancel;
+        editorActions.append(save, cancel);
+        editor.append(label, input, editorActions);
+
+        edit.addEventListener("click", () => {
+          editor.hidden = false;
+          input.focus();
+        });
+        cancel.addEventListener("click", () => {
+          editor.hidden = true;
+          edit.focus();
+        });
+        editor.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const revised = input.value.trim();
+          if (!revised) {
+            status.textContent = strings.errorEmpty;
+            input.focus();
+            return;
+          }
+          const latest = this._readQuestionQueue();
+          const current = latest.find((item) => item.id === queued.id);
+          if (!current) return;
+          current.question = revised;
+          current.status = "waiting";
+          if (!this._writeQuestionQueue(latest)) {
+            status.textContent = strings.offlineQueueStorageFailed;
+            return;
+          }
+          this._els.questionQueueStatus.textContent = strings.offlineQueueSaved;
+          this._renderQuestionQueue();
+        });
+        retry.addEventListener("click", () => this._retryQueuedQuestion(queued.id));
+        remove.addEventListener("click", () => this._removeQueuedQuestion(queued.id));
+
+        actions.append(edit, retry, remove);
+        row.append(question, status, actions, editor);
+        questionQueueList.append(row);
+      }
+    }
+
+    _removeQueuedQuestion(id) {
+      if (this._retryingQuestionIds.has(id)) return;
+      const strings = this._pack?.strings || en.strings;
+      const queue = this._readQuestionQueue();
+      const remaining = queue.filter((item) => item.id !== id);
+      if (remaining.length === queue.length) return;
+      if (!this._writeQuestionQueue(remaining)) {
+        this._els.questionQueueStatus.textContent = strings.offlineQueueStorageFailed;
+        return;
+      }
+      this._renderQuestionQueue();
+    }
+
+    async _retryQueuedQuestion(id) {
+      if (this._retryingQuestionIds.has(id)) return false;
+      const strings = this._pack?.strings || en.strings;
+      const queued = this._readQuestionQueue().find((item) => item.id === id);
+      if (!queued) return false;
+      if (!navigator.onLine) {
+        queued.status = "retry-failed";
+        const queue = this._readQuestionQueue().map((item) => item.id === id ? queued : item);
+        if (!this._writeQuestionQueue(queue)) {
+          this._els.questionQueueStatus.textContent = strings.offlineQueueStorageFailed;
+        }
+        this._renderQuestionQueue();
+        return false;
+      }
+
+      this._retryingQuestionIds.add(id);
+      this._renderQuestionQueue();
+      const result = await this._askServer(queued.question, queued.language, queued.externalAiConsent === true);
+      this._retryingQuestionIds.delete(id);
+
+      const queue = this._readQuestionQueue();
+      const index = queue.findIndex((item) => item.id === id);
+      let queueUpdated = true;
+      if (index >= 0) {
+        if (result.ok) queue.splice(index, 1);
+        else queue[index].status = "retry-failed";
+        queueUpdated = this._writeQuestionQueue(queue);
+      }
+      if (!queueUpdated) this._els.questionQueueStatus.textContent = strings.offlineQueueStorageFailed;
+      else if (result.ok) this._els.questionQueueStatus.textContent = strings.offlineQueueSent;
+      else if (index >= 0) this._els.questionQueueStatus.textContent = strings.offlineQueueRetryFailed;
+      this._renderQuestionQueue();
+      return result.ok && queueUpdated;
     }
 
     async _loadAssistantConfig() {
@@ -1152,33 +1420,41 @@
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ question, language, externalAiConsent })
         });
-        if (!response.ok) return false;
+        if (!response.ok) return { ok: false, retryable: response.status >= 500 || response.status === 408 || response.status === 429 };
         const result = await response.json();
-        if (typeof result.answer !== "string" || !result.answer.trim()) return false;
+        if (typeof result.answer !== "string" || !result.answer.trim()) return { ok: false, retryable: true };
         const links = Array.isArray(result.sources)
           ? result.sources.filter((source) => typeof source?.url === "string" && source.url)
             .map((source) => ({ url: source.url, title: source.title || source.type || "Source" }))
           : [];
         this._appendMessage({ role: "assistant", text: result.answer, lang: language,
-          links });
-        return true;
-      } catch { return false; }
+          links, answerStatus: result.answerStatus });
+        return { ok: true, retryable: false };
+      } catch { return { ok: false, retryable: true }; }
     }
 
     _queueQuestion(question, language, externalAiConsent) {
       const queue = this._readQuestionQueue();
-      queue.push({ question, language, externalAiConsent, queuedAt: new Date().toISOString() });
-      this._writeQuestionQueue(queue);
+      const id = this._newQuestionQueueId();
+      queue.push({ id, question, language, externalAiConsent, queuedAt: new Date().toISOString(), status: "waiting" });
+      if (!this._writeQuestionQueue(queue)) {
+        this._els.questionQueueStatus.textContent = this._pack.strings.offlineQueueStorageFailed;
+        return null;
+      }
+      this._renderQuestionQueue();
+      return id;
     }
 
     async _flushQuestionQueue() {
-      if (!navigator.onLine) return;
-      const queue = this._readQuestionQueue();
-      while (queue.length && navigator.onLine) {
-        const pending = queue[0];
-        if (!await this._askServer(pending.question, pending.language, pending.externalAiConsent === true)) return;
-        queue.shift();
-        this._writeQuestionQueue(queue);
+      if (!navigator.onLine || this._flushingQuestionQueue) return;
+      this._flushingQuestionQueue = true;
+      try {
+        const queuedIds = this._readQuestionQueue().map((item) => item.id);
+        for (const id of queuedIds) {
+          if (!navigator.onLine || !await this._retryQueuedQuestion(id)) break;
+        }
+      } finally {
+        this._flushingQuestionQueue = false;
       }
     }
 
@@ -1189,6 +1465,18 @@
 
     async _onSubmit(event) {
       event.preventDefault();
+      if (this._submittingQuestion) return;
+      this._submittingQuestion = true;
+      this._els.send.disabled = true;
+      try {
+        await this._submitQuestion();
+      } finally {
+        this._submittingQuestion = false;
+        this._els.send.disabled = false;
+      }
+    }
+
+    async _submitQuestion() {
       const text = this._els.input.value.trim();
       if (!text) {
         this._setError("errorEmpty");
@@ -1207,9 +1495,15 @@
       this._emit("question", { text });
 
       const isOffline = !navigator.onLine;
-      let wasQueued = isOffline;
-      if (isOffline) this._queueQuestion(text, currentLang, externalAiConsent);
-      else if (await this._askServer(text, currentLang, externalAiConsent)) return;
+      let wasQueued = false;
+      if (isOffline) {
+        wasQueued = Boolean(this._queueQuestion(text, currentLang, externalAiConsent));
+      } else {
+        const result = await this._askServer(text, currentLang, externalAiConsent);
+        if (result.ok) return;
+        if (result.retryable) wasQueued = Boolean(this._queueQuestion(text, currentLang, externalAiConsent));
+        else this._setError("questionSendFailed");
+      }
 
       // 2. Ensure content and search function are ready
       if (!this._sections || this._sections.length === 0) {
@@ -1253,7 +1547,8 @@
           ].join("\n");
           this._appendMessage({
             role: "assistant", type: "job", text: `${jobTitle}\n${detail}`, lang: currentLang,
-            linkUrl: job.url, linkTitle: jobTitle, sectionId: job.id, score: match.score
+            linkUrl: job.url, linkTitle: jobTitle, sectionId: job.id, score: match.score,
+            cachedCourseContent: true
           });
         }
         if (wasQueued) this._appendOfflineSaved(currentLang);
@@ -1288,7 +1583,8 @@
           linkTitle,
           sectionId: bestSection.id,
           score,
-          showPerson: false
+          showPerson: false,
+          cachedCourseContent: true
         });
       } else {
         // If best is null, answer the i18n string "I could not find this in the course"
@@ -1304,7 +1600,8 @@
           text: notFoundText,
           lang: currentLang,
           score: topScore,
-          showPerson: true
+          showPerson: true,
+          answerStatus: "not_found"
         });
       }
       if (wasQueued) this._appendOfflineSaved(currentLang);

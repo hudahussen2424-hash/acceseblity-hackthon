@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: savanna-assistant-demo
+    runtime: docker
+    plan: free
+    dockerContext: .
+    dockerfilePath: ./api/Dockerfile
+    healthCheckPath: /health/ready
+    envVars:
+      - key: HELPER_TOKEN
+        generateValue: true
+      - key: ESCALATIONS_DB
+        value: /tmp/escalations.sqlite3
+      - key: AI_PROVIDER
+        value: none
+      - key: WEBHOOK_URL
+        value: ""
