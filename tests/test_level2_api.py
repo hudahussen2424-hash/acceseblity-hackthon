@@ -29,6 +29,11 @@ def test_swagger_docs_endpoint(client):
     assert "swagger-ui" in res.text.lower() or "html" in res.headers["content-type"]
 
 
+def test_health_endpoints_report_database_and_content_readiness(client):
+    assert client.get("/health/live").json() == {"status": "ok"}
+    assert client.get("/health/ready").json() == {"status": "ready"}
+
+
 def test_cors_headers_on_api(client):
     res = client.options(
         "/api/v1/ask",
@@ -39,6 +44,25 @@ def test_cors_headers_on_api(client):
     )
     assert res.status_code == 200
     assert res.headers.get("access-control-allow-origin") in ("*", "http://localhost:8080")
+
+
+def test_answer_feedback_is_private_metadata_and_helper_can_review(client, monkeypatch):
+    monkeypatch.setenv("HELPER_TOKEN", "feedback-helper")
+    assert client.get("/api/v1/answer-feedback").status_code == 401
+    response = client.post("/api/v1/answer-feedback", json={
+        "kind": "source", "reason": "incorrect", "sourceUrl": "/lesson#one",
+        "question": "This private learner question must not be stored",
+    })
+    assert response.status_code == 201
+    feedback_id = response.json()["feedbackId"]
+    rows = client.get("/api/v1/answer-feedback", headers={"X-Helper-Token": "feedback-helper"})
+    assert rows.status_code == 200
+    assert rows.json()[0]["source_url"] == "/lesson#one"
+    assert "question" not in rows.json()[0]
+    reviewed = client.post(f"/api/v1/answer-feedback/{feedback_id}/reviewed", headers={"X-Helper-Token": "feedback-helper"})
+    assert reviewed.status_code == 200
+    assert client.get("/api/v1/answer-feedback", headers={"X-Helper-Token": "feedback-helper"}).json()[0]["reviewed"] == 1
+    assert client.post("/api/v1/answer-feedback", json={"kind": "other", "reason": "incorrect"}).status_code == 400
 
 
 def test_helper_endpoints_fail_closed_when_secret_is_not_configured(client, monkeypatch):

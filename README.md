@@ -21,6 +21,7 @@ docker compose up
 - Open the lesson at [http://localhost:8080/](http://localhost:8080/).
 - Open the API documentation at [http://localhost:8081/docs](http://localhost:8081/docs).
 - Open the tutor inbox at [http://localhost:8081/helper](http://localhost:8081/helper) and enter the helper token.
+- Check API process liveness at `/health/live` and database/course readiness at `/health/ready`; readiness returns HTTP 503 until the database is usable and course content is loaded.
 
 Compose stores the API database at `/data/escalations.sqlite3` in the named `api-data` volume, shared with the optional Telegram worker. Container recreation preserves that volume; `docker compose down -v` deletes it. Back up the volume before using this with real learners. When running the API directly, the database defaults to `api/escalations.sqlite3`.
 
@@ -157,6 +158,8 @@ The screen-signal examples are request shapes only: replace the SDP placeholders
 
 Tutor tickets remain waiting until a helper sends a final reply. In the helper inbox, select **Send as an update and keep request open for follow-up** when the tutor is unavailable; the learner can check the ticket in chat and see the update without closing it. Learner-facing copy says tutors may be unavailable, including at 23:00, and that response times vary and are not guaranteed. The widget stores the most recent pending ticket ID locally so the learner can return to the same chat and check again. Telegram `/person` requests return a short reference that can be checked with `/status <reference>`.
 
+Learners can flag an answer or source as unhelpful or incorrect. `POST /api/v1/answer-feedback` stores only the feedback category, reason, source URL, and timestamp; it deliberately does not store the learner's question or answer text. Helpers can review items in `/helper` using the configured helper token. Feedback currently has no automatic expiry, so operators should include its SQLite table in retention and backup reviews.
+
 AI providers must return a JSON answer with `text` and `source_ids`. The API accepts the AI text only when it is an exact excerpt of a cited, retrieved section, and displays only links to sections containing that excerpt. Missing, unknown, or non-extractive answers fall back to the best retrieved course section. If the host selects `AI_PROVIDER=cloud`, learners see an optional consent checkbox; without consent the server uses retrieval only and does not call the cloud provider.
 
 ## Install, Level 3 (JobPosting JSON-LD; honest "how LTI would connect" section if not done)
@@ -222,6 +225,8 @@ Use the helper inbox at `/helper` or the helper-token-protected `GET /api/v1/esc
 ## Cost to run (rough per month for 3,000 learners, and what works with zero budget)
 
 The code has no required paid AI service: retrieval is the default, and Telegram is optional. A rough planning allowance for 3,000 registered learners is about US$20–80 per month for a small hosted Linux server, basic backup/storage, and a domain, assuming modest traffic and no paid AI. This is not a capacity quote: concurrent usage, media storage, backups, SMS volume, and any cloud model can increase it, and the repository has not been load-tested with 3,000 learners. Twilio SMS and cloud AI use are extra variable charges; local Ollama avoids per-request API fees but needs suitable compute and electricity.
+
+For production, configure HTTPS and restrictive trusted origins, secrets from a secret manager, monitored `/health/ready`, encrypted off-host backups with tested restore procedures, and retention/deletion for both tutor tickets and feedback. The checked-in Telegram, JSON SMS route, direct WebRTC, webhook, and fictional job listings are demo integrations or optional adapters, not verified production delivery systems. The repository does not include a production deployment validation or capacity test.
 
 With zero hosting budget, run Docker Compose on an existing computer for a demo, use retrieval with `AI_PROVIDER=none`, and omit SMS and cloud AI. That does not provide a reliable public service. Telegram's Bot API and the open-source components do not remove the cost of hosting or mobile data.
 

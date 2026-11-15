@@ -6,6 +6,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -31,6 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from .qa import answer_question
 
 ROOT = Path(__file__).resolve().parent
+logger = logging.getLogger("db_assistant")
 
 
 def load_env_file() -> None:
@@ -452,6 +454,25 @@ def initialize() -> None:
 
 
 initialize()
+
+
+@app.get("/health/live", include_in_schema=False)
+def health_live() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", include_in_schema=False, response_model=None)
+def health_ready():
+    try:
+        with connect() as db:
+            db.execute("SELECT 1").fetchone()
+            sections = db.execute("SELECT COUNT(*) FROM content_sections").fetchone()[0]
+        if sections == 0:
+            raise RuntimeError("course content is empty")
+    except (sqlite3.Error, OSError, RuntimeError):
+        logger.exception("Readiness check failed (database/content unavailable)")
+        return JSONResponse(status_code=503, content={"status": "not_ready"})
+    return {"status": "ready"}
 
 
 def helper_auth(token: str | None) -> None:
