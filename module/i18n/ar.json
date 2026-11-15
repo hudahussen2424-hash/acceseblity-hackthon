@@ -30,6 +30,13 @@
     "feedbackFailed": "تعذّر إرسال الملاحظات. تحقق من الاتصال وحاول مجددًا.",
     "phoneLabel": "رقم الهاتف (اختياري)",
     "phoneInvalid": "أدخل رقم هاتف إثيوبيًا صالحًا.",
-    "ticketReference": "رقم التذكرة: {ticketId}."
+    "ticketReference": "رقم التذكرة: {ticketId}.",
+    "saveForReview": "احفظ في حزمة الدراسة",
+    "removeFromReview": "أزل من حزمة الدراسة",
+    "studyPackTitle": "حزمة دراستي دون اتصال",
+    "studyPackEmpty": "احفظ إجابة مفيدة لمراجعتها لاحقًا، حتى دون اتصال بالإنترنت.",
+    "studyPackExport": "نزّل حزمة الدراسة",
+    "studyPackSaved": "حُفظت للمراجعة دون اتصال.",
+    "studyPackRemoved": "أُزيلت من حزمة الدراسة."
   }
 }

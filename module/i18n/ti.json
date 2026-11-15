@@ -56,7 +56,7 @@
     "clearLocalDataDone": "ኣብ ኣሳሽ ዝነበረ መረዳእታ ሓጋዚ ተጸሪዩ። ኣብ ላዕሊ እንተ ዘይሰሪዝካዮም ሕቶታት ኣገልጋሊ ግን ይቕጽሉ።",
     "clearLocalDataFailed": "መረዳእታ ኣሳሽ ከጽርይ ኣይከኣልኩን። ቁጽጽር መረዳእታ ዌብሳይት ኣሳሽካ ተጠቐም።",
     "escalationFailed": "ሕቶኻ ክለኣኽ ኣይከኣለን። ኢንተርኔትካ ኣረጋግጽ እሞ እንደገና ፈትን።",
-    "offlineSaved": "ኣብዚ ስልኪ ተዓቂቡ። ኢንተርኔት ምስ ረኸብካ ክለኣኽ እዩ።",
+    "offlineSaved": "ኣብዚ ስልኪ ተዓቂቡ። ኢንተርኔት ምስ ረኸብካ ክለኣኽ እዩ።",
     "questionSendFailed": "ሓጋዚ ነዚ ሕቶ ክቕበሎ ኣይከኣለን። ሕቶኻ ኣረጋግጽ እሞ ዳግማይ ፈትን።",
     "offlineQueueTitle": "ክለኣኹ ዝጽበዩ ሕቶታት",
     "offlineQueueWaiting": "ምስ ኢንተርነት ክሳብ ዝራኸብ ይጽበዩ ኣለዉ።",
@@ -113,6 +113,13 @@
     "screenShareCleanupFailed": "ምክፋል ስክሪን ተቋሪጹ፡ ግን ዴሞ ምልክታት ክጸርዩ ኣይከኣሉን።",
     "screenScreenshotTooLarge": "ካብ 3 MB ዝንእስ ስእሊ ምረጽ።",
     "translationUnavailable": "እዚ ትርጉም ክጽዓን ኣይከኣለን። እንግሊዝኛ ይርአ ኣሎ።",
-    "describeOther": "ዘድልየካ ምትዕርራይ ኣብ ማስታወሻ ግለጽ።"
+    "describeOther": "ዘድልየካ ምትዕርራይ ኣብ ማስታወሻ ግለጽ።",
+    "saveForReview": "ኣብ መጽናዕቲ ኣቐምጦ",
+    "removeFromReview": "ካብ መጽናዕቲ ኣውጽኣዮ",
+    "studyPackTitle": "ናይ ኦፍላይን መጽናዕቲ ማስታወሻ",
+    "studyPackEmpty": "ጠቓሚ መልሲ ኣቐምጡ፣ ድሒርኩም ንኽትምርምርዎ።",
+    "studyPackExport": "ናይ መጽናዕቲ ማስታወሻ ኣውርዱ",
+    "studyPackSaved": "ንኦፍላይን ምርምር ተቐሚጡ።",
+    "studyPackRemoved": "ካብ መጽናዕቲ ተኣልዩ።"
   }
 }

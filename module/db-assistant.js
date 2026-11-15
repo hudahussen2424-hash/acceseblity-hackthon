@@ -90,6 +90,13 @@
       feedbackIncorrect: "Flag as incorrect",
       feedbackSent: "Thanks. Your feedback was sent without your question text.",
       feedbackFailed: "Feedback could not be sent. Check your connection and try again.",
+      saveForReview: "Save to study pack",
+      removeFromReview: "Remove from study pack",
+      studyPackTitle: "My offline study pack",
+      studyPackEmpty: "Save a useful answer to review it later, even offline.",
+      studyPackExport: "Download study pack",
+      studyPackSaved: "Saved for offline review.",
+      studyPackRemoved: "Removed from study pack.",
       phoneLabel: "Phone number (optional)",
       phoneInvalid: "Enter an Ethiopian number starting with 09, 07, +2519, or +2517.",
       accommodationButton: "I need an accommodation for my interview",
@@ -209,6 +216,13 @@
       feedbackIncorrect: "ትክክል እንዳልሆነ ምልክት ያድርጉ",
       feedbackSent: "እናመሰግናለን። ጥያቄዎን ሳናካትት አስተያየትዎ ተልኳል።",
       feedbackFailed: "አስተያየት መላክ አልተቻለም። ግንኙነቱን ያረጋግጡና እንደገና ይሞክሩ።",
+      saveForReview: "ለጥናት ያስቀምጡ",
+      removeFromReview: "ከጥናት ማስታወሻ ያስወግዱ",
+      studyPackTitle: "የእኔ ከመስመር ውጭ የጥናት ማስታወሻ",
+      studyPackEmpty: "በኋላ ለመከለስ ጠቃሚ መልስ ያስቀምጡ።",
+      studyPackExport: "የጥናት ማስታወሻን ያውርዱ",
+      studyPackSaved: "ከመስመር ውጭ ለመከለስ ተቀምጧል።",
+      studyPackRemoved: "ከጥናት ማስታወሻ ተወግዷል።",
       phoneLabel: "የስልክ ቁጥር (አማራጭ)",
       phoneInvalid: "ትክክለኛ የኢትዮጵያ ስልክ ቁጥር ያስገቡ።",
       accommodationButton: "ለቃለ መጠይቄ ማስተካከያ እፈልጋለሁ",
@@ -289,6 +303,7 @@
       this._pack = null;
       this._errorKey = "";
       this._messages = [];
+      this._studyPack = [];
       this._sections = [];
       this._jobs = [];
       this._searchModule = null;
@@ -325,6 +340,9 @@
       this._built = true;
       this._storageKey = `db-assistant:${location.pathname}:${this.id || "default"}`;
       this._queueKey = `${this._storageKey}:offline-questions`;
+      this._studyPackKey = `${this._storageKey}:study-pack`;
+      try { this._studyPack = JSON.parse(localStorage.getItem(this._studyPackKey) || "[]"); } catch { this._studyPack = []; }
+      if (!Array.isArray(this._studyPack)) this._studyPack = [];
       this._pendingTutorKey = `${this._storageKey}:pending-tutor-ticket`;
       this._restore();
       this._render();
@@ -504,6 +522,11 @@
           [aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 1px; }
           .log { display: flex; flex-direction: column; gap: 12px; max-height: 40vh; overflow-y: auto; padding: 4px; }
           .offline-queue { display: grid; gap: 10px; padding: 12px; border: 1px solid #d5e1d8; border-radius: 12px; background: #f5faf6; }
+          .study-pack { display: grid; gap: 10px; padding: 12px; border: 1px solid #c9d9ce; border-radius: 12px; background: #f3f8f4; }
+          :host([theme="dark"]) .study-pack { border-color: #46534a; background: #202824; }
+          .study-pack h3, .study-pack p { margin: 0; }
+          .study-card { display: grid; gap: 6px; padding: 10px; border: 1px solid #d5e1d8; border-radius: 10px; background: var(--assistant-background, #fff); }
+          .study-card p { white-space: pre-wrap; }
           .offline-queue[hidden] { display: none; }
           :host([theme="dark"]) .offline-queue { border-color: #46534a; background: #202824; }
           .offline-queue h3, .queue-question { margin: 0; overflow-wrap: anywhere; }
@@ -589,6 +612,12 @@
             </div>
             <p id="greeting" dir="auto"></p>
             <div class="log" id="messages" role="log" aria-live="polite" aria-relevant="additions"></div>
+            <section class="study-pack" id="study-pack" aria-labelledby="study-pack-heading" hidden>
+              <h3 id="study-pack-heading" tabindex="-1"></h3>
+              <div id="study-pack-list"></div>
+              <button type="button" class="secondary" id="study-pack-export" hidden></button>
+              <p id="study-pack-status" role="status" aria-live="polite"></p>
+            </section>
             <section class="offline-queue" id="offline-queue" aria-labelledby="offline-queue-heading" hidden>
               <h3 id="offline-queue-heading"></h3>
               <ul class="queue-list" id="offline-queue-list"></ul>
@@ -678,6 +707,8 @@
         languageSelect: $("language-select"),
         greeting: $("greeting"),
         log: $("messages"),
+        studyPack: $("study-pack"), studyPackHeading: $("study-pack-heading"),
+        studyPackList: $("study-pack-list"), studyPackExport: $("study-pack-export"), studyPackStatus: $("study-pack-status"),
         questionQueue: $("offline-queue"),
         questionQueueHeading: $("offline-queue-heading"),
         questionQueueList: $("offline-queue-list"),
@@ -738,6 +769,7 @@
       const e = this._els;
       e.launcher.addEventListener("click", () => this._open());
       e.close.addEventListener("click", () => this._close());
+      e.studyPackExport.addEventListener("click", () => this._exportStudyPack());
       e.form.addEventListener("submit", (event) => this._onSubmit(event));
       this._onlineHandler = () => this._flushQuestionQueue();
       window.addEventListener("online", this._onlineHandler);
@@ -1024,6 +1056,17 @@
       }
 
       if (isAssistant && message.type !== "system") {
+        if (message.answerStatus !== "not_found" && (message.links?.length || message.linkUrl)) {
+          const save = document.createElement("button");
+          save.type = "button";
+          save.className = "secondary listen-button";
+          const saved = this._studyPack.some((item) => item.id === this._studyCardId(message));
+          save.textContent = strings[saved ? "removeFromReview" : "saveForReview"];
+          save.setAttribute("aria-pressed", saved ? "true" : "false");
+          save.dataset.studyCardId = this._studyCardId(message);
+          save.addEventListener("click", () => this._toggleStudyCard(message));
+          div.append(save);
+        }
         const feedback = document.createElement("div");
         feedback.className = "voice-controls";
         for (const reason of ["unhelpful", "incorrect"]) {
@@ -1074,6 +1117,7 @@
       }
 
       this._els.log.appendChild(div);
+      this._renderStudyPack();
       this._els.log.scrollTop = this._els.log.scrollHeight;
 
       if (persist) {
@@ -1095,6 +1139,79 @@
         });
         this._save();
       }
+    }
+
+    _studyCardId(message) {
+      return `${message.sectionId || message.linkUrl || message.links?.[0]?.url || "answer"}:${message.lang || "en"}`;
+    }
+
+    _toggleStudyCard(message, cardId = this._studyCardId(message), fromStudyCard = false) {
+      const id = cardId;
+      const index = this._studyPack.findIndex((item) => item.id === id);
+      const strings = this._pack?.strings || en.strings;
+      if (index >= 0) {
+        this._studyPack.splice(index, 1);
+        this._els.studyPackStatus.textContent = strings.studyPackRemoved;
+      } else {
+        this._studyPack.push({ id, text: message.text, lang: message.lang || "en", title: message.linkTitle || "", url: message.linkUrl || message.links?.[0]?.url || "", savedAt: new Date().toISOString() });
+        this._els.studyPackStatus.textContent = strings.studyPackSaved;
+      }
+      try { localStorage.setItem(this._studyPackKey, JSON.stringify(this._studyPack)); } catch { this._els.studyPackStatus.textContent = strings.clearLocalDataFailed; }
+      for (const button of this._els.log.querySelectorAll("button[data-study-card-id]")) {
+        if (button.dataset.studyCardId !== id) continue;
+        const saved = this._studyPack.some((item) => item.id === id);
+        button.textContent = strings[saved ? "removeFromReview" : "saveForReview"];
+        button.setAttribute("aria-pressed", saved ? "true" : "false");
+      }
+      this._renderStudyPack();
+      if (fromStudyCard) this._els.studyPackHeading.focus();
+    }
+
+    _renderStudyPack() {
+      if (!this._els?.studyPack) return;
+      const e = this._els;
+      const strings = this._pack?.strings || en.strings;
+      e.studyPack.hidden = this._studyPack.length === 0;
+      e.studyPackHeading.textContent = strings.studyPackTitle;
+      e.studyPackList.replaceChildren();
+      e.studyPackExport.hidden = this._studyPack.length === 0;
+      e.studyPackExport.textContent = strings.studyPackExport;
+      if (!this._studyPack.length) return;
+      for (const item of this._studyPack) {
+        const card = document.createElement("article");
+        card.className = "study-card";
+        const title = document.createElement("strong");
+        title.textContent = item.title || strings.assistant;
+        const body = document.createElement("p");
+        body.lang = item.lang || "en";
+        body.dir = "auto";
+        body.textContent = item.text;
+        card.append(title, body);
+        if (item.url) {
+          const link = document.createElement("a");
+          link.href = item.url;
+          link.textContent = `${strings.readInCourse}: ${item.title || strings.assistant}`;
+          card.append(link);
+        }
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "secondary";
+        remove.textContent = strings.removeFromReview;
+        remove.addEventListener("click", () => this._toggleStudyCard(item, item.id, true));
+        card.append(remove);
+        e.studyPackList.append(card);
+      }
+    }
+
+    _exportStudyPack() {
+      if (!this._studyPack.length) return;
+      const text = this._studyPack.map((item) => `${item.title || "Study note"}\n${item.text}${item.url ? `\nSource: ${item.url}` : ""}`).join("\n\n---\n\n");
+      const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "offline-study-pack.txt";
+      link.click();
+      URL.revokeObjectURL(url);
     }
 
     async _loadI18n() {
@@ -1183,6 +1300,7 @@
       this._populateAccommodationChoices();
       if (this._errorKey) this._setError(this._errorKey);
       this._renderMessages();
+      this._renderStudyPack();
       this._renderQuestionQueue();
       this._emit("ready", { lang: pack.lang, dir: this.dir });
     }

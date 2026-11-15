@@ -119,6 +119,7 @@ This component supports:
 - tutor escalation flow
 - optional AI answer fallback when configured
 - browser-local retry and queued question behavior when offline
+- an offline study pack for saving sourced answers locally and downloading them for review
 
 ## API
 
@@ -131,7 +132,28 @@ Common flows include:
 - `POST /api/v1/escalations` for tutor-request creation
 - `GET /api/v1/escalations` and `/api/v1/escalations/{ticket_id}` for helper and learner status
 - `POST /api/v1/escalations/{ticket_id}/reply` for tutor replies
+- `GET /api/v1/helper/metrics` for privacy-safe queue age, reply-time, and feedback totals
+- `GET /api/v1/helper/content-health` to check indexed sources, required languages, and placeholder text
 - helper-only job notification and SMS endpoints when configured
+
+Track 3 backend additions:
+
+- **Verifiable answers:** `/api/v1/ask` returns a `grounding` object with its evidence quote, source URL, retrieval score, and verification method. Refused or unmatched answers have no evidence. Confidence bands are based on retrieval similarity, not calibrated probabilities.
+- **Request tracing:** responses carry `X-Request-ID`; JSON logs record route, method, status, elapsed time, and request ID without question text, ticket contents, or phone numbers.
+- **Abuse protection:** configurable request limits apply to learner Q&A, tutor requests, and inbound SMS. The limiter is process-local; use one API worker or put a shared limiter in front of multiple workers.
+- **Tutor operations:** helper-only metrics show queue age, stale waiting requests, average reply time, and unreviewed answer feedback without returning conversation or contact data.
+- **Course quality checks:** helper-only content health reports broken/missing source references, placeholder text, and gaps in supported-language titles or lesson text.
+
+The default rate limits are 120 Q&A requests, 20 tutor requests, and 30 inbound SMS requests per client per 60 seconds. A rejected request returns HTTP 429 and `Retry-After`. Set a limit to `0` to disable it. `TUTOR_STALE_MINUTES` controls when a waiting ticket appears as stale in the helper metrics.
+
+Tutor endpoints use `X-Helper-Token`. For example:
+
+```bash
+curl -H "X-Helper-Token: $HELPER_TOKEN" http://localhost:8081/api/v1/helper/metrics
+curl -H "X-Helper-Token: $HELPER_TOKEN" http://localhost:8081/api/v1/helper/content-health
+```
+
+The answer response includes a `grounding` object. Successful answers include the exact source quote and a confidence band based on retrieval similarity; this score is not a calibrated probability. Refused or unmatched questions return `status: unverified` and no evidence.
 
 ## Local development and testing
 

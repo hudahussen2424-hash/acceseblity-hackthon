@@ -3,6 +3,50 @@ info:
   title: Learning Assistant & Course Escalations API
   version: 1.0.0
 paths:
+  /api/v1/helper/metrics:
+    get:
+      summary: Get Tutor Operations Metrics
+      description: Returns aggregate queue age, response-time, and unreviewed-feedback metrics. Ticket content and learner contact data are never returned.
+      parameters:
+      - name: x-helper-token
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Privacy-safe aggregate tutor metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          description: Invalid helper token.
+        '503':
+          description: Helper access is not configured.
+  /api/v1/helper/content-health:
+    get:
+      summary: Check Indexed Course Content
+      description: Reports missing source links, supported-language text, malformed sections, and placeholder content without exposing ticket data.
+      parameters:
+      - name: x-helper-token
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Course evidence and localization health report.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          description: Invalid helper token.
+        '503':
+          description: Helper access is not configured.
   /api/v1/content:
     get:
       summary: Get Content
@@ -45,13 +89,15 @@ paths:
         required: true
       responses:
         '200':
-          description: Successful response; answerStatus is answered, not_found, or refused.
+          description: Successful response; includes source-verified grounding and evidence quote metadata. Answer status is answered, not_found, or refused.
           content:
             application/json:
               schema:
                 additionalProperties: true
                 type: object
                 title: Response Ask Api V1 Ask Post
+        '429':
+          $ref: '#/components/responses/RateLimited'
         '422':
           description: Validation Error
           content:
@@ -119,6 +165,8 @@ paths:
             text/plain:
               schema:
                 type: string
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /sms/inbound:
     post:
       summary: Sms Inbound
@@ -130,6 +178,8 @@ paths:
             text/plain:
               schema:
                 type: string
+        '429':
+          $ref: '#/components/responses/RateLimited'
   /api/v1/escalations:
     post:
       summary: Create Escalation
@@ -152,6 +202,8 @@ paths:
                 additionalProperties:
                   type: string
                 title: Response Create Escalation Api V1 Escalations Post
+        '429':
+          $ref: '#/components/responses/RateLimited'
         '422':
           description: Validation Error
           content:
@@ -486,6 +538,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
 components:
+  responses:
+    RateLimited:
+      description: Too many requests. Wait for the Retry-After duration before trying again.
+      headers:
+        Retry-After:
+          description: Seconds until another request is allowed.
+          schema:
+            type: integer
+        X-Request-ID:
+          description: Correlation ID for support and server logs.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+              requestId:
+                type: string
   schemas:
     HTTPValidationError:
       properties:

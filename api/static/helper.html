@@ -198,6 +198,32 @@
       const item = document.createElement("li"); item.className = "ticket";
       const title = document.createElement("h2"); title.textContent = `${ticket.type === "accommodation" ? "Accommodation request" : "Request"} ${ticket.ticketId}`; item.append(title);
       const meta = document.createElement("p"); meta.textContent = `Language: ${ticket.language} · Page: ${ticket.page}`; item.append(meta);
+      if (ticket.handoffBrief && typeof ticket.handoffBrief === "object") {
+        const brief = ticket.handoffBrief;
+        const section = document.createElement("section"); section.className = "screen-context";
+        const heading = document.createElement("h3"); heading.textContent = "Tutor handoff brief"; section.append(heading);
+        const addBriefLine = (label, value) => {
+          if (typeof value !== "string" || !value) return;
+          const line = document.createElement("p"); line.textContent = `${label}: ${value}`; section.append(line);
+        };
+        const reasonLabels = {
+          answer_not_found: "Answer not found",
+          learner_requested_person: "Learner requested a person",
+          answer_flagged_incorrect: "Answer flagged incorrect",
+          other: "Other"
+        };
+        addBriefLine("Reason", reasonLabels[brief.reason] || "Tutor support requested");
+        addBriefLine("Summary", brief.summary);
+        addBriefLine("Requested page", brief.requestedPage);
+        if (brief.source && typeof brief.source === "object") {
+          addBriefLine("Source title", brief.source.title);
+          addBriefLine("Source URL", brief.source.url);
+        }
+        if (brief.evidenceStatus === "unavailable") addBriefLine("Evidence", "Evidence unavailable");
+        section.lang = ["en", "am", "ti", "om", "so", "ar"].includes(brief.language) ? brief.language : "en";
+        section.dir = brief.language === "ar" ? "rtl" : "auto";
+        item.append(section);
+      }
       if (ticket.phone) { const phone = document.createElement("p"); phone.textContent = `Learner phone: ${ticket.phone}`; item.append(phone); }
       if (ticket.type === "accommodation") {
         const privateDetails = document.createElement("p");

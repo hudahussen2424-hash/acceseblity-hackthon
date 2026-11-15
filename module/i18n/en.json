@@ -113,6 +113,13 @@
     "screenShareCleanupFailed": "Screen sharing stopped, but demo signaling could not be cleared.",
     "screenScreenshotTooLarge": "Choose an image smaller than 3 MB.",
     "translationUnavailable": "This translation could not be loaded. English is being shown.",
-    "describeOther": "Describe the accommodation you need in the note."
+    "describeOther": "Describe the accommodation you need in the note.",
+    "saveForReview": "Save to study pack",
+    "removeFromReview": "Remove from study pack",
+    "studyPackTitle": "My offline study pack",
+    "studyPackEmpty": "Save a useful answer to review it later, even offline.",
+    "studyPackExport": "Download study pack",
+    "studyPackSaved": "Saved for offline review.",
+    "studyPackRemoved": "Removed from study pack."
   }
 }

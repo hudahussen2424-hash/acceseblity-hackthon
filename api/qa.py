@@ -27,6 +27,27 @@ SENSITIVE_REFUSAL_TRANSLATIONS = {
 }
 
 
+def _grounding(score: float, answer: str, sources: list[dict], status: str, mode: str) -> dict:
+    if status != "answered" or not sources:
+        return {"status": "unverified", "confidence": "low", "score": round(score, 4), "evidence": []}
+    try:
+        threshold = float(os.getenv("THRESHOLD", "0.25"))
+    except ValueError:
+        threshold = 0.25
+    confidence = "high" if score >= 0.75 else "medium" if score >= threshold else "low"
+    return {
+        "status": "verified",
+        "method": "verbatim-source-excerpt" if mode == "ai" else "retrieved-course-section",
+        "confidence": confidence,
+        "confidenceBasis": "retrieval-similarity-not-probability",
+        "score": round(score, 4),
+        "evidence": [
+            {"title": source["title"], "url": source["url"], "quote": answer}
+            for source in sources
+        ],
+    }
+
+
 def is_substantiated(answer_text: str, section: dict, language: str = "en") -> bool:
     """Accept only a verbatim excerpt from the cited section."""
     if not isinstance(answer_text, str) or not answer_text.strip():
@@ -60,6 +81,7 @@ async def answer_question(
             "mode": "search",
             "score": best_score,
             "answerStatus": "refused",
+            "grounding": _grounding(best_score, "", [], "refused", "search"),
         }
 
     try:
@@ -73,6 +95,7 @@ async def answer_question(
             "mode": "search",
             "score": best_score,
             "answerStatus": "not_found",
+            "grounding": _grounding(best_score, "", [], "not_found", "search"),
         }
 
     best_sources = [
@@ -125,6 +148,7 @@ async def answer_question(
             "mode": "ai",
             "score": best_score,
             "answerStatus": "answered",
+            "grounding": _grounding(best_score, answer_text, cited_sources, "answered", "ai"),
         }
     except Exception:
         # Non-substantiated, uncited, or unavailable model answers use the best matched course section.
@@ -134,4 +158,5 @@ async def answer_question(
             "mode": "search",
             "score": best_score,
             "answerStatus": "answered",
+            "grounding": _grounding(best_score, best["text"], best_sources, "answered", "search"),
         }

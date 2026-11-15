@@ -5,14 +5,18 @@ import base64
 import binascii
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+import math
 import os
 import re
 import secrets
 import sqlite3
+import time
 import urllib.parse
 import urllib.request
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -30,9 +34,29 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .qa import answer_question
+from .retrieval import retrieve
 
 ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("db_assistant")
+
+_RATE_LIMIT_EVENTS: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+_RATE_LIMIT_DEFAULTS = {"ask": 120, "escalations": 20, "sms": 30}
+_RATE_LIMIT_PATHS = {
+    "/api/v1/ask": "ask",
+    "/api/v1/escalations": "escalations",
+    "/api/v1/sms/inbound": "sms",
+    "/sms/inbound": "sms",
+}
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,100}$")
+_HANDOFF_BRIEF_VERSION = 1
+_HANDOFF_REASONS = {
+    "answer_not_found",
+    "learner_requested_person",
+    "answer_flagged_incorrect",
+    "other",
+}
+_EMAIL_PATTERN = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
+_PHONE_PATTERN = re.compile(r"(?<!\w)(?:\+?\d[\d\s().-]{6,}\d)(?!\w)")
 
 
 def load_env_file() -> None:
@@ -79,6 +103,79 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _rate_limit_values(bucket: str) -> tuple[int, int]:
+    try:
+        limit = int(os.getenv(f"RATE_LIMIT_{bucket.upper()}", str(_RATE_LIMIT_DEFAULTS[bucket])))
+        window = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+    except ValueError:
+        return _RATE_LIMIT_DEFAULTS[bucket], 60
+    return max(0, limit), max(1, window)
+
+
+def _rate_limit_retry_after(bucket: str, client_key: str, now: float | None = None) -> int | None:
+    limit, window = _rate_limit_values(bucket)
+    if limit == 0:
+        return None
+    current = time.monotonic() if now is None else now
+    event_key = (bucket, client_key)
+    events = _RATE_LIMIT_EVENTS.get(event_key, deque())
+    while events and current - events[0] >= window:
+        events.popleft()
+    if not events:
+        _RATE_LIMIT_EVENTS.pop(event_key, None)
+    if len(events) >= limit:
+        return max(1, math.ceil(window - (current - events[0])))
+    events.append(current)
+    _RATE_LIMIT_EVENTS[event_key] = events
+    return None
+
+
+@app.middleware("http")
+async def request_operations_middleware(request: Request, call_next):
+    incoming_id = request.headers.get("X-Request-ID", "")
+    request_id = incoming_id if _REQUEST_ID_PATTERN.fullmatch(incoming_id) else str(uuid4())
+    request.state.request_id = request_id
+    bucket = _RATE_LIMIT_PATHS.get(request.url.path)
+    if bucket and request.method == "POST":
+        client_key = request.client.host if request.client else "unknown"
+        try:
+            is_private_proxy = ipaddress.ip_address(client_key).is_private
+        except ValueError:
+            is_private_proxy = False
+        if is_private_proxy:
+            forwarded = request.headers.get("x-forwarded-for", "").split(",")
+            if forwarded and forwarded[-1].strip():
+                client_key = forwarded[-1].strip()
+        retry_after = _rate_limit_retry_after(bucket, client_key)
+        if retry_after is not None:
+            response = JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Please wait before trying again.", "requestId": request_id},
+                headers={"Retry-After": str(retry_after)},
+            )
+            response.headers["X-Request-ID"] = request_id
+            logger.info(json.dumps({
+                "event": "request.rate_limited", "request_id": request_id,
+                "method": request.method, "path": request.url.path, "status_code": 429,
+                "retry_after_seconds": retry_after,
+            }, separators=(",", ":")))
+            return response
+    started = time.monotonic()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        logger.info(json.dumps({
+            "event": "request.completed", "request_id": request_id,
+            "method": request.method, "path": request.url.path,
+            "status_code": status_code,
+            "duration_ms": round((time.monotonic() - started) * 1000, 2),
+        }, separators=(",", ":")))
 
 
 @app.exception_handler(RequestValidationError)
@@ -345,7 +442,8 @@ def initialize() -> None:
             id TEXT PRIMARY KEY, conversation TEXT NOT NULL, language TEXT NOT NULL,
             page TEXT NOT NULL, note TEXT NOT NULL, audio_json TEXT, type TEXT NOT NULL DEFAULT 'person',
             job_id TEXT, accommodation TEXT, screen_context_json TEXT, reply TEXT, created_at TEXT NOT NULL,
-            replied_at TEXT, status TEXT NOT NULL DEFAULT 'waiting', phone TEXT
+            replied_at TEXT, status TEXT NOT NULL DEFAULT 'waiting', phone TEXT,
+            handoff_brief_json TEXT
         )""")
         columns = {row[1] for row in db.execute("PRAGMA table_info(escalations)")}
         if "audio_json" not in columns:
@@ -357,6 +455,7 @@ def initialize() -> None:
             ("screen_context_json", "TEXT"),
             ("phone", "TEXT"),
             ("access_token_hash", "TEXT"),
+            ("handoff_brief_json", "TEXT"),
         ):
             if column not in columns:
                 db.execute(f"ALTER TABLE escalations ADD COLUMN {column} {definition}")
@@ -375,6 +474,9 @@ def initialize() -> None:
             source_url TEXT NOT NULL, created_at TEXT NOT NULL,
             reviewed INTEGER NOT NULL DEFAULT 0
         )""")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_escalations_status_created ON escalations(status, created_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_escalations_replied_at ON escalations(replied_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_answer_feedback_reviewed_created ON answer_feedback(reviewed, created_at)")
         db.execute("""CREATE TABLE IF NOT EXISTS sms_alerts (
             phone_hash TEXT PRIMARY KEY,
             active INTEGER NOT NULL DEFAULT 1,
@@ -475,6 +577,121 @@ def health_ready():
     return {"status": "ready"}
 
 
+@app.get("/api/v1/helper/metrics")
+def helper_metrics(x_helper_token: str | None = Header(default=None)) -> dict[str, Any]:
+    """Return privacy-safe tutor queue and response-time totals."""
+    helper_auth(x_helper_token)
+    try:
+        stale_minutes = max(1, int(os.getenv("TUTOR_STALE_MINUTES", "60")))
+    except ValueError:
+        stale_minutes = 60
+    now = datetime.now(timezone.utc)
+    stale_before = (now - timedelta(minutes=stale_minutes)).isoformat()
+    history_after = (now - timedelta(days=30)).isoformat()
+    with connect() as db:
+        purge_expired_tickets(db)
+        totals = db.execute(
+            "SELECT COUNT(*) AS total, "
+            "SUM(CASE WHEN status='waiting' THEN 1 ELSE 0 END) AS waiting, "
+            "SUM(CASE WHEN status='answered' THEN 1 ELSE 0 END) AS answered "
+            "FROM escalations"
+        ).fetchone()
+        oldest = db.execute(
+            "SELECT created_at FROM escalations WHERE status='waiting' ORDER BY created_at LIMIT 1"
+        ).fetchone()
+        stale_count = db.execute(
+            "SELECT COUNT(*) FROM escalations WHERE status='waiting' AND created_at < ?",
+            (stale_before,),
+        ).fetchone()[0]
+        response_time = db.execute(
+            "SELECT AVG((julianday(replied_at)-julianday(created_at))*1440) "
+            "FROM escalations WHERE replied_at IS NOT NULL AND created_at >= ?",
+            (history_after,),
+        ).fetchone()[0]
+        feedback = db.execute(
+            "SELECT COUNT(*) FROM answer_feedback WHERE reviewed=0"
+        ).fetchone()[0]
+    oldest_minutes = None
+    if oldest:
+        try:
+            created = datetime.fromisoformat(oldest["created_at"].replace("Z", "+00:00"))
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            oldest_minutes = max(0, round((now - created).total_seconds() / 60, 1))
+        except ValueError:
+            oldest_minutes = None
+    return {
+        "asOf": now.isoformat(),
+        "queue": {
+            "waiting": totals["waiting"] or 0,
+            "answered": totals["answered"] or 0,
+            "total": totals["total"] or 0,
+            "staleWaiting": stale_count,
+            "staleAfterMinutes": stale_minutes,
+            "oldestWaitingMinutes": oldest_minutes,
+        },
+        "last30Days": {
+            "averageReplyMinutes": round(response_time, 1) if response_time is not None else None,
+            "unreviewedAnswerFeedback": feedback,
+        },
+    }
+
+
+@app.get("/api/v1/helper/content-health")
+def helper_content_health(x_helper_token: str | None = Header(default=None)) -> dict[str, Any]:
+    """Check indexed course records for missing evidence and locale coverage."""
+    helper_auth(x_helper_token)
+    with connect() as db:
+        rows = db.execute("SELECT id, section_json FROM content_sections ORDER BY id").fetchall()
+    issues: list[dict[str, str]] = []
+    urls: dict[str, str] = {}
+    if not rows:
+        issues.append({"sectionId": "", "code": "course_content_empty"})
+    for row in rows:
+        section_id = row["id"]
+        try:
+            section = json.loads(row["section_json"])
+        except (TypeError, ValueError):
+            issues.append({"sectionId": section_id, "code": "invalid_json"})
+            continue
+        if not isinstance(section, dict):
+            issues.append({"sectionId": section_id, "code": "invalid_section"})
+            continue
+        title = section.get("title")
+        titles = section.get("titles") if isinstance(section.get("titles"), dict) else {}
+        for language in sorted(SUPPORTED_LANGUAGES):
+            localized_title = titles.get(language)
+            if language == "en" and not localized_title and isinstance(title, str):
+                localized_title = title
+            if not isinstance(localized_title, str) or not localized_title.strip():
+                issues.append({"sectionId": section_id, "code": f"missing_{language}_title"})
+        url = section.get("url")
+        if not isinstance(url, str) or not url.strip():
+            issues.append({"sectionId": section_id, "code": "missing_source_url"})
+        elif url in urls:
+            issues.append({"sectionId": section_id, "code": "duplicate_source_url"})
+        else:
+            urls[url] = section_id
+        text = section.get("text")
+        if not isinstance(text, (str, dict)) or not (text.strip() if isinstance(text, str) else text):
+            issues.append({"sectionId": section_id, "code": "missing_text"})
+            continue
+        localized_text = text if isinstance(text, dict) else {"en": text}
+        for language in sorted(SUPPORTED_LANGUAGES):
+            if not isinstance(localized_text.get(language), str) or not localized_text[language].strip():
+                issues.append({"sectionId": section_id, "code": f"missing_{language}_text"})
+        if any("[CHECK]" in value for value in localized_text.values() if isinstance(value, str)):
+            issues.append({"sectionId": section_id, "code": "placeholder_text"})
+    return {
+        "checkedAt": datetime.now(timezone.utc).isoformat(),
+        "sectionsChecked": len(rows),
+        "healthy": not issues,
+        "issueCount": len(issues),
+        "issues": issues[:200],
+        "issuesTruncated": len(issues) > 200,
+    }
+
+
 def helper_auth(token: str | None) -> None:
     expected = os.getenv("HELPER_TOKEN", "").strip()
     if not expected:
@@ -572,6 +789,115 @@ def indexed_sections() -> list[dict[str, Any]]:
     return sections
 
 
+def _handoff_page(page: str) -> str:
+    """Keep the requested page path without URL credentials, query strings, or fragments."""
+    try:
+        parts = urllib.parse.urlsplit(page)
+        if parts.scheme in {"http", "https"} and parts.hostname:
+            host = parts.hostname
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+            port = f":{parts.port}" if parts.port else ""
+            return urllib.parse.urlunsplit((parts.scheme, f"{host}{port}", parts.path, "", ""))
+        if not parts.scheme and parts.path.startswith("/") and not parts.path.startswith("//"):
+            return parts.path
+    except ValueError:
+        pass
+    return "Not a web lesson or job page"
+
+
+def _redact_brief_text(value: str, limit: int = 280) -> str:
+    text = _EMAIL_PATTERN.sub("[redacted]", value)
+    text = _PHONE_PATTERN.sub("[redacted]", text)
+    text = " ".join("".join(character for character in text if character.isprintable()).split())
+    return text[:limit].rstrip()
+
+
+def _handoff_reason(conversation: list[dict[str, Any]], requested: str | None) -> str:
+    if requested is not None:
+        return requested
+    for message in reversed(conversation):
+        if (
+            isinstance(message, dict)
+            and message.get("role") == "assistant"
+            and message.get("answerStatus") == "not_found"
+        ):
+            return "answer_not_found"
+    return "learner_requested_person"
+
+
+def build_handoff_brief(
+    conversation: list[dict[str, Any]],
+    language: str,
+    page: str,
+    *,
+    handoff_reason: str | None = None,
+    job_id: str | None = None,
+    sections: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Build a bounded helper brief locally from the conversation and indexed evidence."""
+    latest_question = next(
+        (
+            message["text"].strip()
+            for message in reversed(conversation)
+            if isinstance(message, dict)
+            and message.get("role", message.get("from")) == "user"
+            and isinstance(message.get("text"), str)
+            and message["text"].strip()
+        ),
+        "",
+    )
+    reason = _handoff_reason(conversation, handoff_reason)
+    if reason not in _HANDOFF_REASONS:
+        reason = "other"
+
+    source = None
+    excerpt = ""
+    if latest_question:
+        try:
+            threshold = float(os.getenv("THRESHOLD", "0.25"))
+        except ValueError:
+            threshold = 0.25
+        available_sections = sections if sections is not None else indexed_sections()
+        ranked = retrieve(latest_question[:4000], available_sections, language)
+        score, match = ranked[0] if ranked else (0.0, None)
+        if (
+            match is not None
+            and score >= threshold
+            and isinstance(match.get("title"), str)
+            and match["title"].strip()
+            and isinstance(match.get("url"), str)
+            and (
+                match["url"].startswith("/")
+                and not match["url"].startswith("//")
+                or urllib.parse.urlsplit(match["url"]).scheme in {"http", "https"}
+            )
+        ):
+            source = {"title": match["title"][:300], "url": match["url"][:2000]}
+            text = match.get("text")
+            excerpt = _redact_brief_text(text) if isinstance(text, str) else ""
+
+    if source:
+        summary = f'The learner question matched indexed course material: "{source["title"]}".'
+        if excerpt:
+            summary += f" Relevant indexed excerpt: {excerpt}"
+    else:
+        summary = "No indexed course content met the retrieval threshold for the conversation."
+
+    brief: dict[str, Any] = {
+        "version": _HANDOFF_BRIEF_VERSION,
+        "language": language,
+        "requestedPage": _handoff_page(page),
+        "summary": summary[:600],
+        "source": source,
+        "reason": reason,
+        "evidenceStatus": "available" if source else "unavailable",
+    }
+    if isinstance(job_id, str) and job_id.strip():
+        brief["jobId"] = job_id.strip()[:200]
+    return brief
+
+
 def save_escalation_record(
     conversation: list[dict[str, Any]], language: str, page: str, note: str,
     audio_json: str | None = None, ticket_type: str = "person",
@@ -580,14 +906,27 @@ def save_escalation_record(
     created_at: str | None = None,
     phone: str | None = None,
     access_token_hash: str | None = None,
+    handoff_reason: str | None = None,
 ) -> str:
     ticket_id = str(uuid4())
     created = created_at or datetime.now(timezone.utc).isoformat()
+    brief = build_handoff_brief(
+        conversation,
+        language,
+        page,
+        handoff_reason=handoff_reason,
+        job_id=job_id,
+    )
     with connect() as db:
         purge_expired_tickets(db)
         db.execute(
-            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,screen_context_json,created_at,phone,access_token_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (ticket_id, json.dumps(conversation, ensure_ascii=False), language, page, note.strip(), audio_json, ticket_type, job_id, accommodation, screen_context_json, created, phone, access_token_hash),
+            "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,screen_context_json,created_at,phone,access_token_hash,handoff_brief_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                ticket_id, json.dumps(conversation, ensure_ascii=False), language, page,
+                note.strip(), audio_json, ticket_type, job_id, accommodation,
+                screen_context_json, created, phone, access_token_hash,
+                json.dumps(brief, ensure_ascii=False),
+            ),
         )
     return ticket_id
 
@@ -894,18 +1233,54 @@ def ticket_dict(row: sqlite3.Row) -> dict[str, Any]:
     }
 
 
+def helper_handoff_brief(db: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
+    stored = row["handoff_brief_json"]
+    if stored:
+        brief = json.loads(stored)
+        if isinstance(brief, dict) and brief.get("version") == _HANDOFF_BRIEF_VERSION:
+            return brief
+
+    conversation = json.loads(row["conversation"])
+    if not isinstance(conversation, list):
+        conversation = []
+    brief = build_handoff_brief(
+        conversation,
+        row["language"],
+        row["page"],
+        job_id=row["job_id"],
+        sections=indexed_sections(),
+    )
+    db.execute(
+        "UPDATE escalations SET handoff_brief_json=? WHERE id=?",
+        (json.dumps(brief, ensure_ascii=False), row["id"]),
+    )
+    return brief
+
+
+def helper_ticket_dict(db: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
+    return {**ticket_dict(row), "handoffBrief": helper_handoff_brief(db, row)}
+
+
 @app.post("/api/v1/escalations", status_code=201)
 def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> dict[str, str]:
     conversation = payload.get("conversation", [])
     language, page, note = payload.get("language"), payload.get("page"), payload.get("note", "")
     if not isinstance(conversation, list) or len(conversation) > 200:
         plain_bad("Conversation must be a list of up to 200 messages.")
-    if any(not isinstance(m, dict) or not isinstance(m.get("text"), str) for m in conversation):
+    if any(
+        not isinstance(message, dict)
+        or not isinstance(message.get("text"), str)
+        or len(message["text"]) > 4000
+        for message in conversation
+    ):
         plain_bad("Each conversation message needs text.")
     if language not in SUPPORTED_LANGUAGES:
         plain_bad("Language must be en, am, om, ti, so, or ar.")
     if not isinstance(page, str) or not page or len(page) > 2048:
         plain_bad("Add the page address.")
+    handoff_reason = payload.get("handoffReason")
+    if handoff_reason is not None and handoff_reason not in _HANDOFF_REASONS:
+        plain_bad("Handoff reason must be answer_not_found, learner_requested_person, answer_flagged_incorrect, or other.")
     if not isinstance(note, str) or len(note) > 4000:
         plain_bad("The note must be 4000 characters or fewer.")
     raw_phone = payload.get("phone", "")
@@ -992,6 +1367,7 @@ def create_escalation(payload: dict[str, Any], background: BackgroundTasks) -> d
         screen_context_json,
         phone=normalized_phone,
         access_token_hash=hashlib.sha256(access_token.encode("utf-8")).hexdigest(),
+        handoff_reason=handoff_reason,
     )
     background.add_task(notify_webhook, ticket_id)
     return {"ticketId": ticket_id, "accessToken": access_token}
@@ -1003,7 +1379,22 @@ def list_waiting(x_helper_token: str | None = Header(default=None)) -> list[dict
     with connect() as db:
         purge_expired_tickets(db)
         rows = db.execute("SELECT * FROM escalations WHERE status='waiting' ORDER BY created_at").fetchall()
-    return [ticket_dict(row) for row in rows]
+        tickets = [helper_ticket_dict(db, row) for row in rows]
+    return tickets
+
+
+@app.get("/api/v1/helper/escalations/{ticket_id}/brief")
+def get_helper_handoff_brief(
+    ticket_id: str,
+    x_helper_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    helper_auth(x_helper_token)
+    with connect() as db:
+        purge_expired_tickets(db)
+        row = db.execute("SELECT * FROM escalations WHERE id=?", (ticket_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="We could not find that ticket.")
+        return helper_handoff_brief(db, row)
 
 
 @app.get("/api/v1/escalations/{ticket_id}")

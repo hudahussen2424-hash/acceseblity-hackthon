@@ -56,7 +56,7 @@
     "clearLocalDataDone": "Xogta kaaliyaha ee biraawsarka waa la nadiifiyey. Codsiyada server-ku way jiraan haddii aanad kor ku tirtirin.",
     "clearLocalDataFailed": "Lama nadiifin karin xogta biraawsarkan. Isticmaal dejimaha xogta goobta ee biraawsarka.",
     "escalationFailed": "Codsigaaga lama diri karin. Hubi isku xirkaaga oo mar kale isku day.",
-    "offlineSaved": "Telefoonkan ayaa lagu kaydiyey. Marka aad internet hesho ayaa la diri doonaa.",
+    "offlineSaved": "Telefoonkan ayaa lagu kaydiyey. Marka aad internet hesho ayaa la diri doonaa.",
     "questionSendFailed": "Kaaliyuhu ma aqbalin su'aashan. Dib u eeg su'aasha oo mar kale isku day.",
     "offlineQueueTitle": "Su'aalaha sugaya in la diro",
     "offlineQueueWaiting": "Waxay sugayaan isku xirka internetka.",
@@ -113,6 +113,13 @@
     "screenShareCleanupFailed": "Wadaagista shaashaddu way joogsatay, laakiin calaamadaha demo-ga lama nadiifin karin.",
     "screenScreenshotTooLarge": "Dooro sawir ka yar 3 MB.",
     "translationUnavailable": "Turjumaaddan lama soo shubi karin. Ingiriis ayaa la muujinayaa.",
-    "describeOther": "Qoraalka ku sharax habaynta aad u baahan tahay."
+    "describeOther": "Qoraalka ku sharax habaynta aad u baahan tahay.",
+    "saveForReview": "Ku kaydi xirmada waxbarashada",
+    "removeFromReview": "Ka saar xirmada waxbarashada",
+    "studyPackTitle": "Xirmadayda waxbarasho ee offline",
+    "studyPackEmpty": "Kaydi jawaab waxtar leh si aad hadhow dib ugu eegto, xitaa adigoon internet lahayn.",
+    "studyPackExport": "Soo dejiso xirmada waxbarashada",
+    "studyPackSaved": "Waxaa loo kaydiyey dib-u-eegis offline.",
+    "studyPackRemoved": "Waxaa laga saaray xirmada waxbarashada."
   }
 }
