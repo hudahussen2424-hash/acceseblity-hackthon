@@ -117,6 +117,127 @@ test("speech recognition fills the question for review without sending it", asyn
   }
 });
 
+test("spoken task sends a reviewed tutor draft without a button and reuses its idempotency key", async ({ page }) => {
+  const transcripts = ["ask a tutor about lesson access", "ask a tutor about lesson access", "send it"];
+  const voiceCalls = [];
+  await page.addInitScript(() => {
+    window.__recordingCount = 0;
+    class FakeMediaRecorder {
+      constructor() { this.handlers = {}; this.state = "inactive"; this.mimeType = "audio/webm"; }
+      addEventListener(name, callback) { this.handlers[name] = callback; }
+      start() { this.state = "recording"; window.__activeRecorder = this; }
+      stop() {
+        this.state = "inactive";
+        window.__recordingCount++;
+        this.handlers.dataavailable?.({ data: new Blob([`recording-${window.__recordingCount}`], { type: this.mimeType }) });
+        this.handlers.stop?.();
+      }
+    }
+    Object.defineProperty(window, "MediaRecorder", { value: FakeMediaRecorder, configurable: true });
+    Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) }, configurable: true });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", { value: class { constructor(text) { this.text = text; } }, configurable: true });
+    Object.defineProperty(window, "speechSynthesis", { value: { getVoices: () => [{ lang: "en-US" }], cancel() {}, speak() {} }, configurable: true });
+  }, transcripts);
+  await page.route("**/api/v1/voice/commands", async (route) => {
+    const payload = route.request().postDataJSON();
+    voiceCalls.push({ payload, headers: route.request().headers() });
+    const transcript = transcripts[voiceCalls.length - 1];
+    if (transcript === "ask a tutor about lesson access" && payload.shareConsent) {
+      await route.fulfill({ json: {
+        status: "draft", action: "request_tutor", transcript, language: "en",
+        answerText: "Review this tutor request, then say send it.",
+        draft: { conversation: [{ role: "user", text: payload.transcript }], language: "en", page: "/demo/blank.html" },
+        draftToken: "signed-test-draft"
+      } });
+      return;
+    }
+    if (transcript === "ask a tutor about lesson access") {
+      await route.fulfill({ json: { status: "consent_required", action: "request_tutor", transcript,
+                                    language: "en", answerText: "Please consent before sharing." } });
+      return;
+    }
+    await route.fulfill({ json: {
+      status: "sent", action: "send_tutor_request", transcript, language: "en",
+      answerText: "Your tutor request was sent.", ticket: { ticketId: "ticket-123", accessToken: "learner-token" }
+    } });
+  });
+
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.locator("#launcher").click();
+  const recordCommand = async () => {
+    await assistant.locator("#voice-command").click();
+    await expect(assistant.locator("#stop-voice")).toBeVisible();
+    await assistant.locator("#stop-voice").click();
+  };
+  await recordCommand();
+  await expect(assistant.locator("#escalation")).toBeVisible();
+  await assistant.locator("#consent").check();
+  await recordCommand();
+  await expect(assistant.locator("#messages")).toContainText("Review this tutor request");
+  await expect(assistant.locator("#messages")).toContainText("ask a tutor about lesson access");
+
+  await recordCommand();
+  await expect(assistant.locator("#messages")).toContainText("Your tutor request was sent.");
+  expect(voiceCalls).toHaveLength(3);
+  expect(voiceCalls[2].payload.draftToken).toBe("signed-test-draft");
+  expect(voiceCalls[2].headers["idempotency-key"]).toMatch(/^voice-/);
+  await expect(assistant.locator("#check-tutor-reply")).toBeVisible();
+});
+
+test("voice guide is shown as text and spoken, and offline voice questions sync later", async ({ page, context }) => {
+  await page.addInitScript(() => {
+    class FakeMediaRecorder {
+      constructor() { this.handlers = {}; this.state = "inactive"; this.mimeType = "audio/webm"; }
+      addEventListener(name, callback) { this.handlers[name] = callback; }
+      start() { this.state = "recording"; }
+      stop() {
+        this.state = "inactive";
+        this.handlers.dataavailable?.({ data: new Blob(["offline-recording"], { type: this.mimeType }) });
+        this.handlers.stop?.();
+      }
+    }
+    Object.defineProperty(window, "MediaRecorder", { value: FakeMediaRecorder, configurable: true });
+    Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) }, configurable: true });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", { value: class { constructor(text) { this.text = text; } }, configurable: true });
+    Object.defineProperty(window, "speechSynthesis", { value: { getVoices: () => [{ lang: "en-US" }], cancel() {}, speak() {} }, configurable: true });
+  });
+  let syncCalls = 0;
+  await page.route("**/api/v1/voice/guide?**", (route) => route.fulfill({ json: {
+    language: "en", steps: ["Ask a lesson question.", "Review the answer."], text: "1. Ask a lesson question.\n2. Review the answer.",
+    speakText: "Ask a lesson question. Review the answer."
+  } }));
+  await page.route("**/api/v1/voice/actions/sync", async (route) => {
+    syncCalls++;
+    await route.fulfill({ json: { results: [{ id: route.request().postDataJSON().actions[0].id, status: "processed", action: "ask",
+      transcript: "explain this lesson", language: "en", answerText: "This is the sourced lesson answer.",
+      sources: [{ title: "Lesson", url: "/lesson#source" }], grounding: { status: "verified" } }] } });
+  });
+
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.locator("#launcher").click();
+  await assistant.locator("#voice-guide").click();
+  await expect(assistant.locator("#messages")).toContainText("Ask a lesson question.");
+
+  await context.setOffline(true);
+  await assistant.locator("#voice-command").click();
+  await expect(assistant.locator("#stop-voice")).toBeVisible();
+  await assistant.locator("#stop-voice").click();
+  await expect(assistant.locator("#voice-status")).toContainText("Saved on this phone");
+  const storedQueue = await assistant.evaluate((element) => JSON.parse(localStorage.getItem(element._voiceQueueKey) || "[]"));
+  expect(storedQueue).toHaveLength(1);
+  expect(storedQueue[0].audioDataUrl).toContain("data:audio/webm;base64,");
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(assistant.locator("#messages")).toContainText("This is the sourced lesson answer.");
+  await expect.poll(() => syncCalls).toBeGreaterThan(0);
+  expect(await assistant.evaluate((element) => JSON.parse(localStorage.getItem(element._voiceQueueKey) || "[]"))).toHaveLength(0);
+});
+
 test("unsupported voice input reports a readable limitation", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "SpeechRecognition", { value: undefined, configurable: true });

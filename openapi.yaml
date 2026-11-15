@@ -6,7 +6,9 @@ paths:
   /api/v1/helper/metrics:
     get:
       summary: Get Tutor Operations Metrics
-      description: Returns aggregate queue age, response-time, and unreviewed-feedback metrics. Ticket content and learner contact data are never returned.
+      description: Returns aggregate queue age, response-time, and
+        unreviewed-feedback metrics. Ticket content and learner contact data are
+        never returned.
       parameters:
       - name: x-helper-token
         in: header
@@ -28,7 +30,9 @@ paths:
   /api/v1/helper/content-health:
     get:
       summary: Check Indexed Course Content
-      description: Reports missing source links, supported-language text, malformed sections, and placeholder content without exposing ticket data.
+      description: Reports missing source links, supported-language text,
+        malformed sections, and placeholder content without exposing ticket
+        data.
       parameters:
       - name: x-helper-token
         in: header
@@ -89,7 +93,9 @@ paths:
         required: true
       responses:
         '200':
-          description: Successful response; includes source-verified grounding and evidence quote metadata. Answer status is answered, not_found, or refused.
+          description: Successful response; includes source-verified grounding
+            and evidence quote metadata. Answer status is answered, not_found,
+            or refused.
           content:
             application/json:
               schema:
@@ -184,7 +190,9 @@ paths:
     post:
       summary: Create Escalation
       operationId: create_escalation_api_v1_escalations_post
-      description: Creates a ticket and stores a deterministic, versioned tutor handoff brief. The original conversation remains available to authenticated helpers.
+      description: Creates a ticket and stores a deterministic, versioned tutor
+        handoff brief. The original conversation remains available to
+        authenticated helpers.
       requestBody:
         required: true
         content:
@@ -212,7 +220,8 @@ paths:
     get:
       summary: List Waiting
       operationId: list_waiting_api_v1_escalations_get
-      description: Lists waiting tickets, including their handoff briefs, for an authenticated helper.
+      description: Lists waiting tickets, including their handoff briefs, for an
+        authenticated helper.
       parameters:
       - name: x-helper-token
         in: header
@@ -224,7 +233,8 @@ paths:
           title: X-Helper-Token
       responses:
         '200':
-          description: Waiting tickets with the original conversation and helper-only handoff brief.
+          description: Waiting tickets with the original conversation and
+            helper-only handoff brief.
           content:
             application/json:
               schema:
@@ -241,7 +251,8 @@ paths:
   /api/v1/helper/escalations/{ticket_id}/brief:
     get:
       summary: Get Tutor Handoff Brief
-      description: Returns or locally regenerates a versioned brief. Requires the helper token; learner access tokens are not accepted.
+      description: Returns or locally regenerates a versioned brief. Requires
+        the helper token; learner access tokens are not accepted.
       parameters:
       - name: ticket_id
         in: path
@@ -255,7 +266,8 @@ paths:
           type: string
       responses:
         '200':
-          description: Deterministic helper handoff brief with an explicit evidence availability state.
+          description: Deterministic helper handoff brief with an explicit
+            evidence availability state.
           content:
             application/json:
               schema:
@@ -293,8 +305,7 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-                title: Response Get Escalation Api V1 Escalations  Ticket Id  
-                  Get
+                title: Response Get Escalation Api V1 Escalations  Ticket Id Get
         '422':
           description: Validation Error
           content:
@@ -328,7 +339,7 @@ paths:
                 type: object
                 additionalProperties:
                   type: string
-                title: Response Delete Escalation Api V1 Escalations  Ticket Id  
+                title: Response Delete Escalation Api V1 Escalations  Ticket Id
                   Delete
         '422':
           description: Validation Error
@@ -362,8 +373,8 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
-                title: Response Export Escalation Data Api V1 Escalations
-                  Ticket Id  Data Get
+                title: Response Export Escalation Data Api V1 Escalations Ticket
+                  Id  Data Get
         '422':
           description: Validation Error
           content:
@@ -407,7 +418,7 @@ paths:
   /api/v1/escalations/{ticket_id}/signal:
     post:
       summary: Post Escalation Signal
-      operationId: 
+      operationId:
         post_escalation_signal_api_v1_escalations__ticket_id__signal_post
       parameters:
       - name: ticket_id
@@ -441,8 +452,8 @@ paths:
                 type: object
                 additionalProperties:
                   type: boolean
-                title: Response Post Escalation Signal Api V1 Escalations  
-                  Ticket Id  Signal Post
+                title: Response Post Escalation Signal Api V1 Escalations Ticket
+                  Id  Signal Post
         '422':
           description: Validation Error
           content:
@@ -451,7 +462,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     get:
       summary: Get Escalation Signal
-      operationId: 
+      operationId:
         get_escalation_signal_api_v1_escalations__ticket_id__signal_get
       parameters:
       - name: ticket_id
@@ -495,7 +506,7 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
       summary: Delete Escalation Signal
-      operationId: 
+      operationId:
         delete_escalation_signal_api_v1_escalations__ticket_id__signal_delete
       parameters:
       - name: ticket_id
@@ -513,7 +524,7 @@ paths:
                 type: object
                 additionalProperties:
                   type: boolean
-                title: Response Delete Escalation Signal Api V1 Escalations  
+                title: Response Delete Escalation Signal Api V1 Escalations
                   Ticket Id  Signal Delete
         '422':
           description: Validation Error
@@ -564,10 +575,230 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/voice/guide:
+    get:
+      summary: Get Voice Guide
+      operationId: get_voice_guide_api_v1_voice_guide_get
+      parameters:
+      - name: language
+        in: query
+        required: false
+        schema:
+          type: string
+          default: en
+          title: Language
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - version
+                - language
+                - steps
+                - text
+                - speakText
+                properties:
+                  version:
+                    type: integer
+                  language:
+                    type: string
+                    enum:
+                    - en
+                    - am
+                    - om
+                    - ti
+                    - so
+                    - ar
+                  steps:
+                    type: array
+                    items:
+                      type: string
+                  text:
+                    type: string
+                  speakText:
+                    type: string
+                  textAvailable:
+                    type: boolean
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      description: Returns a five-step guide in one of the supported languages.
+        Text and speakText can be rendered by the existing client speech
+        synthesis without a paid TTS service.
+  /api/v1/voice/capabilities:
+    get:
+      summary: Get Voice Capabilities
+      operationId: get_voice_capabilities_api_v1_voice_capabilities_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Get Voice Capabilities Api V1 Voice Capabilities
+                  Get
+      description: Reports only installed/configured local speech models and
+        confirms that voice APIs do not call external services.
+  /api/v1/voice/guide/audio:
+    get:
+      summary: Get Voice Guide Audio
+      operationId: get_voice_guide_audio_api_v1_voice_guide_audio_get
+      parameters:
+      - name: language
+        in: query
+        required: false
+        schema:
+          type: string
+          default: en
+          title: Language
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      description: Synthesizes guide audio with an installed local Piper model;
+        returns 503 when unavailable.
+  /api/v1/voice/commands:
+    post:
+      summary: Post Voice Command
+      operationId: post_voice_command_api_v1_voice_commands_post
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        description: Required for a spoken tutor send; reuse the same value to
+          safely retry.
+        schema:
+          type: string
+          minLength: 16
+          maxLength: 128
+      - name: language
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - en
+          - am
+          - om
+          - ti
+          - so
+          - ar
+          default: en
+      responses:
+        '200':
+          description: Transcript/action result; may return a draft,
+            clarification, answer, status, or confirmed ticket send.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Post Voice Command Api V1 Voice Commands Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      description: Processes a local browser transcript or locally transcribes
+        uploaded audio. No cloud speech provider is used. Tutor submission
+        requires an explicit consented, signed draft and spoken confirmation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - transcript
+              additionalProperties: true
+              properties:
+                transcript:
+                  type: string
+                  maxLength: 4000
+                language:
+                  type: string
+                  enum:
+                  - en
+                  - am
+                  - om
+                  - ti
+                  - so
+                  - ar
+                confidence:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                shareConsent:
+                  type: boolean
+                draftToken:
+                  type: string
+                conversation:
+                  type: array
+                ticketId:
+                  type: string
+                ticketAccessToken:
+                  type: string
+                jobId:
+                  type: string
+                accommodation:
+                  type: string
+          audio/*:
+            schema:
+              type: string
+              format: binary
+  /api/v1/voice/actions/sync:
+    post:
+      summary: Sync Voice Actions
+      operationId: sync_voice_actions_api_v1_voice_actions_sync_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              type: object
+              title: Payload
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Sync Voice Actions Api V1 Voice Actions Sync
+                  Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      description: Idempotently replays queued offline drafts. Expired drafts
+        are rejected; a send action runs only with explicit speech confirmation,
+        consent, and an unexpired signed draft.
 components:
   responses:
     RateLimited:
-      description: Too many requests. Wait for the Retry-After duration before trying again.
+      description: Too many requests. Wait for the Retry-After duration before
+        trying again.
       headers:
         Retry-After:
           description: Seconds until another request is allowed.
@@ -621,7 +852,8 @@ components:
           - type: 'null'
         reason:
           type: string
-          enum: [answer_not_found, learner_requested_person, answer_flagged_incorrect, other]
+          enum: [answer_not_found, learner_requested_person,
+              answer_flagged_incorrect, other]
         evidenceStatus:
           type: string
           enum: [available, unavailable]
@@ -654,7 +886,8 @@ components:
           maxLength: 2048
         handoffReason:
           type: string
-          enum: [answer_not_found, learner_requested_person, answer_flagged_incorrect, other]
+          enum: [answer_not_found, learner_requested_person,
+              answer_flagged_incorrect, other]
       additionalProperties: true
     HelperEscalation:
       type: object
@@ -697,3 +930,16 @@ components:
       - msg
       - type
       title: ValidationError
+    HandoffSource:
+      properties:
+        title:
+          type: string
+          title: Title
+        url:
+          type: string
+          title: Url
+      type: object
+      required:
+      - title
+      - url
+      title: HandoffSource

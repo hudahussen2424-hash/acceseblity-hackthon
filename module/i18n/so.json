@@ -120,6 +120,14 @@
     "studyPackEmpty": "Kaydi jawaab waxtar leh si aad hadhow dib ugu eegto, xitaa adigoon internet lahayn.",
     "studyPackExport": "Soo dejiso xirmada waxbarashada",
     "studyPackSaved": "Waxaa loo kaydiyey dib-u-eegis offline.",
-    "studyPackRemoved": "Waxaa laga saaray xirmada waxbarashada."
+    "studyPackRemoved": "Waxaa laga saaray xirmada waxbarashada.",
+    "voiceCommand": "Hawl cod ku sheeg",
+    "voiceGuide": "Sida loo isticmaalo kaaliyahan",
+    "voiceCommandListening": "Waxaan dhageysanayaa hawshaada. Weydii cashar ama shaqo, codso macallin, ama dheh “dir” marka aad dib u eegto codsiga macallinka.",
+    "voiceCommandQueued": "Telefoonkan ayaa lagu kaydiyey. Waa la farsamayn doonaa marka internet jiro. Diristu waxay u baahan tahay codsi ansax ah iyo xaqiijin cad.",
+    "voiceCommandConsent": "Si aad wada sheekaysiga u wadaagto, fur La hadal qof, calaamadee oggolaanshaha, dabadeed codsiga macallinka ku celi.",
+    "voiceCommandFailed": "Codsiga codka lama farsamayn karin. Halkii ku qor.",
+    "voiceCommandClarify": "Si cad uma fahmin. Fadlan ku celi ama qor codsiga.",
+    "voiceCommandGuideFailed": "Hagaha isticmaalka lama heli karo. Hubi isku xirka oo mar kale isku day."
   }
 }

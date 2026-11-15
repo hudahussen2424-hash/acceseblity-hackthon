@@ -31,22 +31,29 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Requ
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .qa import answer_question
 from .retrieval import retrieve
+from .voice import LANGUAGES as VOICE_LANGUAGES
+from .voice import capabilities as voice_capabilities
+from .voice import classify_command, guide as voice_guide, local_provider
 
 ROOT = Path(__file__).resolve().parent
 logger = logging.getLogger("db_assistant")
 
 _RATE_LIMIT_EVENTS: dict[tuple[str, str], deque[float]] = defaultdict(deque)
-_RATE_LIMIT_DEFAULTS = {"ask": 120, "escalations": 20, "sms": 30}
+_RATE_LIMIT_DEFAULTS = {"ask": 120, "escalations": 20, "sms": 30, "voice": 60}
 _RATE_LIMIT_PATHS = {
     "/api/v1/ask": "ask",
     "/api/v1/escalations": "escalations",
     "/api/v1/sms/inbound": "sms",
     "/sms/inbound": "sms",
+    "/api/v1/voice/commands": "voice",
+    "/api/v1/voice/actions/sync": "voice",
 }
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{8,100}$")
 _HANDOFF_BRIEF_VERSION = 1
@@ -97,6 +104,10 @@ if root_env_file.exists():
             os.environ.setdefault(env_key.strip(), env_value.strip().strip('"\''))
 
 DB_PATH = Path(os.getenv("ESCALATIONS_DB", ROOT / "escalations.sqlite3"))
+
+
+def offline_mode() -> bool:
+    return os.getenv("OFFLINE_MODE", "true").strip().lower() not in {"0", "false", "no", "off"}
 
 app = FastAPI(
     title="Learning Assistant & Course Escalations API",
@@ -185,6 +196,8 @@ async def request_operations_middleware(request: Request, call_next):
         response = await call_next(request)
         status_code = response.status_code
         response.headers["X-Request-ID"] = request_id
+        if request.url.path.startswith("/api/v1/voice/"):
+            response.headers["Cache-Control"] = "no-store"
         return response
     finally:
         logger.info(json.dumps({
@@ -384,6 +397,8 @@ def _sms_limit(text: str) -> int:
 
 
 def send_sms_job_alerts(body: str, source_url: str | None = None) -> dict[str, int]:
+    if offline_mode():
+        return {"sent": 0, "failed": 0, "skipped": 1}
     sid = os.getenv("TWILIO_ACCOUNT_SID", "").strip()
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
     from_number = os.getenv("TWILIO_FROM_NUMBER", "").strip()
@@ -449,6 +464,14 @@ def purge_expired_tickets(db: sqlite3.Connection) -> None:
         "(SELECT id FROM escalations WHERE created_at < ?)",
         (cutoff,),
     )
+    try:
+        db.execute(
+            "DELETE FROM voice_action_idempotency WHERE ticket_id IN "
+            "(SELECT id FROM escalations WHERE created_at < ?)",
+            (cutoff,),
+        )
+    except sqlite3.OperationalError:
+        pass
     db.execute("DELETE FROM escalations WHERE created_at < ?", (cutoff,))
 
 
@@ -479,6 +502,12 @@ def initialize() -> None:
         db.execute("""CREATE TABLE IF NOT EXISTS escalation_signals (
             ticket_id TEXT NOT NULL, signal_type TEXT NOT NULL, sdp TEXT NOT NULL,
             created_at TEXT NOT NULL, PRIMARY KEY(ticket_id, signal_type)
+        )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS voice_action_idempotency (
+            idempotency_key_hash TEXT PRIMARY KEY,
+            request_hash TEXT NOT NULL,
+            ticket_id TEXT NOT NULL,
+            created_at TEXT NOT NULL
         )""")
         purge_expired_tickets(db)
         signal_expiry = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
@@ -722,6 +751,8 @@ def plain_bad(message: str) -> None:
 
 
 def notify_webhook(ticket_id: str, at: str | None = None) -> None:
+    if offline_mode():
+        return
     url = os.getenv("WEBHOOK_URL", "").strip()
     if not url:
         return
@@ -930,8 +961,10 @@ def save_escalation_record(
     phone: str | None = None,
     access_token_hash: str | None = None,
     handoff_reason: str | None = None,
+    db: sqlite3.Connection | None = None,
+    ticket_id: str | None = None,
 ) -> str:
-    ticket_id = str(uuid4())
+    ticket_id = ticket_id or str(uuid4())
     created = created_at or datetime.now(timezone.utc).isoformat()
     brief = build_handoff_brief(
         conversation,
@@ -940,9 +973,9 @@ def save_escalation_record(
         handoff_reason=handoff_reason,
         job_id=job_id,
     )
-    with connect() as db:
-        purge_expired_tickets(db)
-        db.execute(
+    def insert_record(connection: sqlite3.Connection) -> None:
+        purge_expired_tickets(connection)
+        connection.execute(
             "INSERT INTO escalations(id,conversation,language,page,note,audio_json,type,job_id,accommodation,screen_context_json,created_at,phone,access_token_hash,handoff_brief_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 ticket_id, json.dumps(conversation, ensure_ascii=False), language, page,
@@ -951,6 +984,11 @@ def save_escalation_record(
                 json.dumps(brief, ensure_ascii=False),
             ),
         )
+    if db is None:
+        with connect() as connection:
+            insert_record(connection)
+    else:
+        insert_record(db)
     return ticket_id
 
 
@@ -993,6 +1031,310 @@ def get_content() -> list[dict[str, Any]]:
     return indexed_sections()
 
 
+def _voice_secret() -> bytes:
+    secret = os.getenv("VOICE_ACTION_SECRET", "").encode("utf-8")
+    if len(secret) < 32:
+        raise HTTPException(status_code=503, detail="VOICE_ACTION_SECRET must contain at least 32 characters.")
+    return secret
+
+
+def _decode_voice_audio(data_url: Any, mime_type: Any = None) -> bytes:
+    if not isinstance(data_url, str) or len(data_url) > 11_000_000:
+        plain_bad("Voice audio must be a base64 data URL smaller than 8 MB.")
+    if not data_url.startswith("data:audio/") or ";base64," not in data_url:
+        plain_bad("Voice audio must use a supported audio data URL.")
+    declared_type, encoded = data_url[5:].split(";base64,", 1)
+    if mime_type is not None and mime_type != declared_type:
+        plain_bad("Voice audio type does not match its data URL.")
+    try:
+        audio = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        plain_bad("Voice audio data is not valid base64.")
+    if not audio or len(audio) > 8_000_000:
+        plain_bad("Voice audio must be between 1 byte and 8 MB.")
+    return audio
+
+
+def _voice_draft_token(draft: dict[str, Any]) -> str:
+    raw = json.dumps(draft, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    encoded = base64.urlsafe_b64encode(raw).decode().rstrip("=")
+    signature = hmac.new(_voice_secret(), encoded.encode(), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _read_voice_draft(token: str, *, allow_expired: bool = False) -> dict[str, Any]:
+    try:
+        encoded, signature = token.rsplit(".", 1)
+        expected = hmac.new(_voice_secret(), encoded.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError
+        draft = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        if not isinstance(draft, dict) or (not allow_expired and int(draft.get("expiresAt", 0)) <= int(time.time())):
+            raise ValueError
+        return draft
+    except (ValueError, TypeError, json.JSONDecodeError, binascii.Error):
+        raise HTTPException(status_code=400, detail="The voice draft is invalid or expired.")
+
+
+def _existing_voice_send(draft: dict[str, Any], idempotency_key: str) -> dict[str, Any] | None:
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{16,128}", idempotency_key):
+        return None
+    canonical = json.dumps(draft, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    request_hash = hashlib.sha256(canonical.encode()).hexdigest()
+    key_hash = hashlib.sha256(idempotency_key.encode()).hexdigest()
+    with connect() as db:
+        existing = db.execute("SELECT request_hash,ticket_id FROM voice_action_idempotency WHERE idempotency_key_hash=?", (key_hash,)).fetchone()
+    if existing is None:
+        return None
+    if not hmac.compare_digest(existing["request_hash"], request_hash):
+        raise HTTPException(status_code=409, detail="This idempotency key was already used for a different request.")
+    access_token = hmac.new(_voice_secret(), f"voice-ticket:{existing['ticket_id']}:{key_hash}".encode(), hashlib.sha256).hexdigest()
+    return {"ticketId": existing["ticket_id"], "accessToken": access_token, "message": "Your tutor request was already sent."}
+
+
+def _read_confirmed_draft(token: str, idempotency_key: str | None) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    try:
+        return _read_voice_draft(token), None
+    except HTTPException as exc:
+        if exc.status_code != 400 or not idempotency_key:
+            raise
+        expired_draft = _read_voice_draft(token, allow_expired=True)
+        existing = _existing_voice_send(expired_draft, idempotency_key)
+        if existing is None:
+            raise
+        return expired_draft, existing
+
+
+def _submit_voice_tutor_request(draft: dict[str, Any], idempotency_key: str) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{16,128}", idempotency_key):
+        raise HTTPException(status_code=400, detail="Send a valid Idempotency-Key (16 to 128 safe characters).")
+    secret = _voice_secret()
+    canonical = json.dumps(draft, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    request_hash = hashlib.sha256(canonical.encode()).hexdigest()
+    key_hash = hashlib.sha256(idempotency_key.encode()).hexdigest()
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        existing = db.execute("SELECT * FROM voice_action_idempotency WHERE idempotency_key_hash=?", (key_hash,)).fetchone()
+        if existing:
+            if not hmac.compare_digest(existing["request_hash"], request_hash):
+                raise HTTPException(status_code=409, detail="This idempotency key was already used for a different request.")
+            ticket_id = existing["ticket_id"]
+        else:
+            ticket_id = str(uuid4())
+            access_token = hmac.new(secret, f"voice-ticket:{ticket_id}:{key_hash}".encode(), hashlib.sha256).hexdigest()
+            access_hash = hashlib.sha256(access_token.encode()).hexdigest()
+            save_escalation_record(
+                draft["conversation"], draft["language"], draft["page"], "Voice tutor request",
+                ticket_type=draft.get("type", "person"), job_id=draft.get("jobId"),
+                accommodation=draft.get("accommodation"),
+                access_token_hash=access_hash, handoff_reason="learner_requested_person", db=db, ticket_id=ticket_id,
+            )
+            db.execute(
+                "INSERT INTO voice_action_idempotency(idempotency_key_hash,request_hash,ticket_id,created_at) VALUES(?,?,?,?)",
+                (key_hash, request_hash, ticket_id, datetime.now(timezone.utc).isoformat()),
+            )
+        access_token = hmac.new(secret, f"voice-ticket:{ticket_id}:{key_hash}".encode(), hashlib.sha256).hexdigest()
+    return {"ticketId": ticket_id, "accessToken": access_token, "message": "Your tutor request was sent."}
+
+
+@app.get("/api/v1/voice/guide")
+def get_voice_guide(language: str = Query(default="en")) -> dict[str, Any]:
+    return voice_guide(language)
+
+
+@app.get("/api/v1/voice/capabilities")
+def get_voice_capabilities() -> dict[str, Any]:
+    return {**voice_capabilities(), "offlineMode": offline_mode()}
+
+
+@app.get("/api/v1/voice/guide/audio")
+async def get_voice_guide_audio(language: str = Query(default="en")) -> Response:
+    guide = voice_guide(language)
+    audio = await run_in_threadpool(local_provider().synthesize, guide["speakText"], language)
+    return Response(audio, media_type="audio/wav", headers={"Cache-Control": "no-store"})
+
+
+async def _voice_command(payload: dict[str, Any], idempotency_key: str | None = None) -> dict[str, Any]:
+    allowed_fields = {"transcript", "language", "confidence", "shareConsent", "conversation", "page", "draftToken",
+                      "ticketId", "ticketAccessToken", "jobId", "accommodation", "idempotencyKey", "expiresAt", "id"}
+    if set(payload) - allowed_fields:
+        plain_bad("Voice command contains unsupported fields.")
+    language = payload.get("language", "en")
+    if language not in VOICE_LANGUAGES:
+        plain_bad("Language must be en, am, om, ti, so, or ar.")
+    transcript = payload.get("transcript")
+    confidence = payload.get("confidence", 1.0)
+    if not isinstance(transcript, str) or not transcript.strip() or len(transcript) > 4000:
+        plain_bad("Provide a transcript of 1 to 4000 characters.")
+    if not isinstance(confidence, (int, float)) or confidence < 0 or confidence > 1:
+        plain_bad("Confidence must be between 0 and 1.")
+    if confidence < 0.45:
+        return {"status": "clarification_required", "transcript": transcript.strip(), "language": language,
+                "action": "clarify", "answerText": "I could not understand that clearly. Please repeat or edit the request."}
+    classified = classify_command(transcript, language)
+    action = classified["action"]
+    result: dict[str, Any] = {"status": "processed", "transcript": transcript.strip(), "language": language,
+                              "detectedLanguage": language,
+                              "action": action, "answerText": ""}
+    if action == "get_guide":
+        guide = voice_guide(language)
+        return {**result, "answerText": guide["text"], "guide": guide}
+    if action == "client_action_required":
+        return {**result, "status": "client_action_required", "clientAction": classified["clientAction"],
+                "answerText": "Screen sharing must be started and approved in your browser."}
+    if action == "external_service_required":
+        return {**result, "status": "unavailable_offline", "answerText": "Alerts need an external messaging service and are unavailable in offline mode."}
+    if action == "check_tutor_reply":
+        ticket_id, token = payload.get("ticketId"), payload.get("ticketAccessToken")
+        if not isinstance(ticket_id, str) or not isinstance(token, str):
+            return {**result, "status": "clarification_required", "answerText": "Provide the tutor ticket and its learner access token to check status."}
+        try:
+            ticket = get_escalation(ticket_id, token)
+        except HTTPException:
+            return {**result, "status": "not_found", "answerText": "I could not find that tutor request."}
+        return {**result, "answerText": f"Tutor request status: {ticket['status']}." + (f" Tutor reply: {ticket['reply']}" if ticket.get("reply") else ""),
+                "ticket": ticket}
+    if action in {"request_tutor", "request_accommodation"}:
+        if payload.get("shareConsent") is not True:
+            return {**result, "status": "consent_required", "answerText": "Please explicitly consent to share this conversation with a tutor."}
+        conversation = payload.get("conversation", [])
+        if not isinstance(conversation, list) or len(conversation) > 20:
+            plain_bad("Conversation must contain up to 20 messages.")
+        if any(not isinstance(m, dict) or m.get("role") not in {"user", "assistant"} or not isinstance(m.get("text"), str) or len(m["text"]) > 4000 for m in conversation):
+            plain_bad("Conversation messages must have a user/assistant role and short text.")
+        page = payload.get("page", "/")
+        if not isinstance(page, str) or len(page) > 2048 or not page:
+            plain_bad("Page must be a short non-empty string.")
+        page = _handoff_page(page)
+        ticket_type = "person"
+        job_id = accommodation = None
+        if action == "request_accommodation":
+            job_id, accommodation = payload.get("jobId"), payload.get("accommodation")
+            if not isinstance(job_id, str) or not job_id.strip() or not isinstance(accommodation, str) or not accommodation.strip():
+                return {**result, "status": "clarification_required", "answerText": "Choose the job and describe the accommodation before preparing the request."}
+            ticket_type = "accommodation"
+        if not conversation or conversation[-1].get("text") != classified["query"]:
+            conversation = [*conversation, {"role": "user", "text": classified["query"]}]
+        draft = {"conversation": conversation, "language": language, "page": page, "consent": True,
+                 "expiresAt": int(time.time()) + 300, "type": ticket_type, "jobId": job_id,
+                 "accommodation": accommodation}
+        if classified["confirmed"]:
+            token = payload.get("draftToken")
+            if not isinstance(token, str):
+                return {**result, "status": "clarification_required", "answerText": "Prepare and review this tutor request before saying ‘send it’."}
+            prepared, prior_send = _read_confirmed_draft(token, idempotency_key)
+            if any(prepared.get(key) != draft.get(key) for key in ("conversation", "language", "page", "consent", "type", "jobId", "accommodation")):
+                return {**result, "status": "draft_changed", "answerText": "This is not the reviewed tutor request. Prepare and confirm it again."}
+            if not idempotency_key:
+                raise HTTPException(status_code=400, detail="Spoken send requires an Idempotency-Key.")
+            sent = prior_send or _submit_voice_tutor_request(prepared, idempotency_key)
+            return {**result, "action": "send_tutor_request", "status": "sent", "confirmed": True,
+                    "answerText": sent["message"], "ticket": sent}
+        return {**result, "status": "draft", "draft": {"conversation": conversation, "language": language,
+                                                               "page": page, "type": ticket_type,
+                                                               "jobId": job_id, "accommodation": accommodation},
+                "draftToken": _voice_draft_token(draft), "answerText": "Review this tutor request, then say ‘send it’ to submit."}
+    if classified["confirmed"]:
+        token = payload.get("draftToken")
+        if not isinstance(token, str):
+            return {**result, "status": "clarification_required", "answerText": "There is no prepared request to send."}
+        if payload.get("shareConsent") is not True:
+            return {**result, "status": "consent_required", "answerText": "Explicit consent is required before sharing with a tutor."}
+        draft, prior_send = _read_confirmed_draft(token, idempotency_key)
+        if draft.get("consent") is not True:
+            return {**result, "status": "consent_required", "answerText": "Explicit consent is required before sharing with a tutor."}
+        if payload.get("conversation") is not None and payload["conversation"] != draft["conversation"]:
+            return {**result, "status": "draft_changed", "answerText": "The request changed after review. Prepare and confirm it again."}
+        for key in ("page", "language", "jobId", "accommodation"):
+            if key in payload and payload[key] != draft.get(key):
+                return {**result, "status": "draft_changed", "answerText": "The request details changed after review. Prepare and confirm it again."}
+        if not idempotency_key:
+            raise HTTPException(status_code=400, detail="Spoken send requires an Idempotency-Key.")
+        sent = prior_send or _submit_voice_tutor_request(draft, idempotency_key)
+        return {**result, "action": "send_tutor_request", "status": "sent", "confirmed": True,
+                "answerText": sent["message"], "ticket": sent}
+    query = classified["query"]
+    if len(query.strip()) < 3:
+        return {**result, "status": "clarification_required", "answerText": "Please repeat the lesson or job question."}
+    answer = await answer_question(query, language, indexed_sections(), allow_cloud=False, offline_only=True)
+    return {**result, "answerText": answer["answer"], "sources": answer["sources"], "grounding": answer["grounding"]}
+
+
+@app.post("/api/v1/voice/commands")
+async def post_voice_command(request: Request, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")) -> dict[str, Any]:
+    content_type = request.headers.get("content-type", "")
+    if content_type.startswith("application/json"):
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit() and int(content_length) > 12_000_000:
+            plain_bad("Voice command JSON must be smaller than 12 MB.")
+        try:
+            payload = await request.json()
+        except Exception:
+            plain_bad("Send valid JSON.")
+        if not isinstance(payload, dict):
+            plain_bad("Send a JSON object.")
+        if "audioDataUrl" in payload:
+            audio = _decode_voice_audio(payload.get("audioDataUrl"), payload.get("audioMimeType"))
+            language = payload.get("language", "en")
+            if language not in VOICE_LANGUAGES:
+                plain_bad("Language must be en, am, om, ti, so, or ar.")
+            recognized = await run_in_threadpool(local_provider().transcribe, audio, language)
+            payload = {key: value for key, value in payload.items() if key not in {"audioDataUrl", "audioMimeType"}}
+            payload.update(recognized)
+        return await _voice_command(payload, idempotency_key)
+    if content_type.startswith("audio/"):
+        content_length = request.headers.get("content-length")
+        if content_length and content_length.isdigit() and int(content_length) > 8_000_000:
+            plain_bad("Audio must be between 1 byte and 8 MB.")
+        chunks = bytearray()
+        async for chunk in request.stream():
+            chunks.extend(chunk)
+            if len(chunks) > 8_000_000:
+                plain_bad("Audio must be between 1 byte and 8 MB.")
+        audio = bytes(chunks)
+        if not audio:
+            plain_bad("Audio must be between 1 byte and 8 MB.")
+        language = request.query_params.get("language", "en")
+        if language not in VOICE_LANGUAGES:
+            plain_bad("Language must be en, am, om, ti, so, or ar.")
+        if request.query_params.get("cloudConsent") == "true":
+            return {"status": "cloud_disabled", "action": "transcribe", "answerText": "Cloud speech processing is disabled in offline-only mode."}
+        recognized = await run_in_threadpool(local_provider().transcribe, audio, language)
+        return await _voice_command({"transcript": recognized["transcript"], "confidence": recognized["confidence"], "language": language}, idempotency_key)
+    raise HTTPException(status_code=415, detail="Send JSON transcript input or an audio/* recording.")
+
+
+@app.post("/api/v1/voice/actions/sync")
+async def sync_voice_actions(payload: dict[str, Any]) -> dict[str, Any]:
+    actions = payload.get("actions")
+    if not isinstance(actions, list) or len(actions) > 50:
+        plain_bad("Send up to 50 queued voice actions.")
+    results = []
+    for item in actions:
+        if not isinstance(item, dict):
+            results.append({"status": "invalid"})
+            continue
+        expires_at = item.get("expiresAt")
+        if not isinstance(expires_at, int) or expires_at < int(time.time()):
+            results.append({"id": item.get("id"), "status": "expired", "executed": False})
+            continue
+        try:
+            action = item
+            if "audioDataUrl" in item:
+                audio = _decode_voice_audio(item.get("audioDataUrl"), item.get("audioMimeType"))
+                language = item.get("language", "en")
+                if language not in VOICE_LANGUAGES:
+                    plain_bad("Language must be en, am, om, ti, so, or ar.")
+                recognized = await run_in_threadpool(local_provider().transcribe, audio, language)
+                action = {key: value for key, value in item.items() if key not in {"audioDataUrl", "audioMimeType"}}
+                action.update(recognized)
+            result = await _voice_command(action, item.get("idempotencyKey"))
+            results.append({"id": item.get("id"), **result})
+        except HTTPException as exc:
+            results.append({"id": item.get("id"), "status": "rejected", "executed": False, "reason": exc.detail})
+    return {"results": results}
+
+
 @app.post("/api/v1/ask")
 async def ask(payload: dict[str, Any]) -> dict[str, Any]:
     question, language = payload.get("question"), payload.get("language", "en")
@@ -1005,6 +1347,7 @@ async def ask(payload: dict[str, Any]) -> dict[str, Any]:
         language,
         indexed_sections(),
         allow_cloud=payload.get("externalAiConsent") is True,
+        offline_only=offline_mode(),
     )
 
 
@@ -1052,6 +1395,8 @@ def assistant_config() -> dict[str, bool]:
 @app.post("/api/v1/jobs/notify")
 def notify_job(payload: dict[str, Any], x_helper_token: str | None = Header(default=None)) -> dict[str, Any]:
     helper_auth(x_helper_token)
+    if offline_mode():
+        return {"telegram": {"sent": 0, "failed": 0, "skipped": 1}, "sms": {"sent": 0, "failed": 0, "skipped": 1}}
     job = payload.get("job", payload)
     if not isinstance(job, dict):
         plain_bad("Send one job object.")
@@ -1228,7 +1573,7 @@ async def sms_inbound(request: Request, background: BackgroundTasks) -> PlainTex
 
     # Normal question: run answer pipeline
     sections = indexed_sections()
-    result = await answer_question(text, lang, sections)
+    result = await answer_question(text, lang, sections, allow_cloud=False, offline_only=offline_mode())
     answer = result.get("answer", "")
     sources = result.get("sources", [])
 

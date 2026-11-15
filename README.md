@@ -128,6 +128,11 @@ The checked-in OpenAPI schema is in [`openapi.yaml`](./openapi.yaml). You can us
 Common flows include:
 
 - `POST /api/v1/ask` for learner questions
+- `GET /api/v1/voice/guide?language=en` for localized readable and speakable instructions
+- `GET /api/v1/voice/capabilities` for locally installed speech model availability
+- `GET /api/v1/voice/guide/audio?language=en` for locally synthesized guide audio (optional local Piper model)
+- `POST /api/v1/voice/commands` for a transcript JSON body or raw `audio/*` upload
+- `POST /api/v1/voice/actions/sync` for idempotent replay of offline voice drafts
 - `GET /api/v1/content` and `POST /api/v1/content` for content management
 - `POST /api/v1/escalations` for tutor-request creation
 - `GET /api/v1/escalations` and `/api/v1/escalations/{ticket_id}` for helper and learner status
@@ -138,6 +143,21 @@ Common flows include:
 - helper-only job notification and SMS endpoints when configured
 
 Track 3 backend additions:
+
+- **Offline voice assistance:** The backend defaults to `OFFLINE_MODE=true` and Compose sets it to true. Q&A uses local retrieval, webhooks/SMS/Telegram egress is suppressed, and voice drafts are signed while tutor sends use persistent idempotency keys. Set `VOICE_ACTION_SECRET` to a stable random value (at least 32 characters) before voice tutor sends will work. The guide is available as localized text without models. Audio transcription/synthesis require operator-provisioned local Vosk/Piper models and FFmpeg; `/api/v1/voice/capabilities` lists actual readiness. No paid API or cloud speech provider is called. Setting `OFFLINE_MODE=false` opts the rest of the backend back into configured external integrations; the voice endpoints remain local-only.
+
+The backend does not record from the microphone or play audio. The browser must capture a recording, upload it (or submit an on-device speech transcript), play the returned guide text/audio, and call the API when recording ends. An offline device must record and queue a draft in browser storage; the API cannot run while disconnected. On reconnection, the client posts queued actions to the sync endpoint. A queued send executes only when its explicit supported-language confirmation and unexpired signed draft are present. Screen sharing still requires a browser prompt and learner approval.
+
+Example:
+
+```bash
+curl http://localhost:8081/api/v1/voice/guide?language=en
+curl -X POST http://localhost:8081/api/v1/voice/commands \
+  -H 'Content-Type: application/json' \
+  -d '{"transcript":"Explain this lesson","language":"en"}'
+```
+
+For tutor submission, first send a transcript such as `talk to a tutor` with `shareConsent: true`, then review and retain the returned `draftToken`. Confirm with transcript `send it`, the same `draftToken`, `shareConsent: true`, and a unique `Idempotency-Key` header of 16–128 safe characters. A retry with the same key returns the same ticket. Transcript-only mode assumes the browser recognizer is local; the server itself never sends speech to a remote recognizer.
 
 - **Verifiable answers:** `/api/v1/ask` returns a `grounding` object with its evidence quote, source URL, retrieval score, and verification method. Refused or unmatched answers have no evidence. Confidence bands are based on retrieval similarity, not calibrated probabilities.
 - **Request tracing:** responses carry `X-Request-ID`; JSON logs record route, method, status, elapsed time, and request ID without question text, ticket contents, or phone numbers.

@@ -309,7 +309,7 @@ def handle_text(chat_id: int, text: str, username: str | None = None) -> str:
     if not question or len(question) > 4000:
         return "Please send a question of 1 to 4000 characters."
     record_message(chat_id, "user", question)
-    result = asyncio.run(answer_question(question, language, indexed_sections()))
+    result = asyncio.run(answer_question(question, language, indexed_sections(), allow_cloud=False, offline_only=api_main.offline_mode()))
     response = format_answer(result, language)
     record_message(chat_id, "assistant", response)
     return response
@@ -366,6 +366,8 @@ def process_update(update: dict[str, Any], token: str) -> None:
 
 
 def run() -> None:
+    if api_main.offline_mode():
+        raise RuntimeError("Telegram polling is disabled while OFFLINE_MODE is enabled.")
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         raise RuntimeError("Set TELEGRAM_BOT_TOKEN in the project .env file.")

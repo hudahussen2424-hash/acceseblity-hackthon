@@ -120,6 +120,14 @@
     "studyPackEmpty": "Save a useful answer to review it later, even offline.",
     "studyPackExport": "Download study pack",
     "studyPackSaved": "Saved for offline review.",
-    "studyPackRemoved": "Removed from study pack."
+    "studyPackRemoved": "Removed from study pack.",
+    "voiceCommand": "Speak a task",
+    "voiceGuide": "How to use this assistant",
+    "voiceCommandListening": "Listening for a task. Ask a lesson or job question, request tutor help, or say “send it” after reviewing a tutor draft.",
+    "voiceCommandQueued": "Saved on this phone. It will be processed when you are online. Tutor sends still need a valid draft and clear confirmation.",
+    "voiceCommandConsent": "To share this conversation, open Talk to a person, check the consent box, then repeat your tutor request.",
+    "voiceCommandFailed": "I could not process that voice request. You can type the request instead.",
+    "voiceCommandClarify": "I could not understand that clearly. Please repeat or type the request.",
+    "voiceCommandGuideFailed": "The usage guide is unavailable. Check your connection and try again."
   }
 }

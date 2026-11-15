@@ -32,6 +32,14 @@
       notFound: "I could not find this in the course",
       readInCourse: "Read in the course",
       microphone: "Use microphone",
+      voiceCommand: "Speak a task",
+      voiceGuide: "How to use this assistant",
+      voiceCommandListening: "Listening for a task. Ask a lesson or job question, request tutor help, or say ‘send it’ after reviewing a tutor draft.",
+      voiceCommandQueued: "Saved on this phone. It will be processed when you are online. Tutor sends still need a valid draft and clear confirmation.",
+      voiceCommandConsent: "To share this conversation, open Talk to a person, check the consent box, then repeat your tutor request.",
+      voiceCommandFailed: "I could not process that voice request. You can type the request instead.",
+      voiceCommandClarify: "I could not understand that clearly. Please repeat or type the request.",
+      voiceCommandGuideFailed: "The usage guide is unavailable. Please check your connection and try again.",
       stop: "Stop",
       listening: "Listening with speech recognition. Review the words before sending.",
       stopped: "Listening stopped.",
@@ -157,6 +165,14 @@
       notFound: "ይህንን በትምህርቱ ውስጥ ማግኘት አልቻልኩም",
       readInCourse: "በትምህርቱ ውስጥ ያንብቡ",
       microphone: "ማይክሮፎን ተጠቀም",
+      voiceCommand: "ተግባርዎን በድምፅ ይናገሩ",
+      voiceGuide: "ይህን ረዳት እንዴት መጠቀም እንደሚቻል",
+      voiceCommandListening: "ተግባርዎን እያዳመጥኩ ነው። ስለ ትምህርት ወይም ሥራ ይጠይቁ፣ አስተማሪ ይጠይቁ፣ ወይም የተዘጋጀውን ጥያቄ ከገመገሙ በኋላ “ላክ” ይበሉ።",
+      voiceCommandQueued: "በዚህ ስልክ ላይ ተቀምጧል። ኢንተርኔት ሲኖር ይሰራል። ለአስተማሪ መላክ ግልጽ ማረጋገጫ ይፈልጋል።",
+      voiceCommandConsent: "ይህን ውይይት ለማጋራት፣ ከሰው ጋር ይነጋገሩን ይክፈቱ፣ የፈቃድ ሳጥኑን ይምረጡ፣ ከዚያ ጥያቄዎን እንደገና ይናገሩ።",
+      voiceCommandFailed: "የድምፅ ጥያቄውን ማስኬድ አልቻልኩም። በጽሑፍ መጻፍ ይችላሉ።",
+      voiceCommandClarify: "ግልጽ በሆነ መንገድ ልረዳ አልቻልኩም። እባክዎ ይድገሙ ወይም ይጻፉ።",
+      voiceCommandGuideFailed: "የአጠቃቀም መመሪያው አልተገኘም። ግንኙነትዎን ይፈትሹና እንደገና ይሞክሩ።",
       stop: "አቁም",
       listening: "በድምፅ ማወቂያ እያዳመጥኩ ነው። ከመላክዎ በፊት ቃላቱን ይመልከቱ።",
       stopped: "ማዳመጥ ቆሟል።",
@@ -309,6 +325,9 @@
       this._searchModule = null;
       this._recognition = null;
       this._voiceMode = "";
+      this._voiceCommandRecording = false;
+      this._voiceCommandDraft = null;
+      this._voiceActionQueue = [];
       this._voiceBlob = null;
       this._voiceObjectUrl = "";
       this._ignoreRecognitionEnd = false;
@@ -344,6 +363,9 @@
       try { this._studyPack = JSON.parse(localStorage.getItem(this._studyPackKey) || "[]"); } catch { this._studyPack = []; }
       if (!Array.isArray(this._studyPack)) this._studyPack = [];
       this._pendingTutorKey = `${this._storageKey}:pending-tutor-ticket`;
+      this._voiceDraftKey = `${this._storageKey}:voice-command-draft`;
+      this._voiceQueueKey = `${this._storageKey}:voice-command-queue`;
+      this._restoreVoiceCommandState();
       this._restore();
       this._render();
       this._restorePendingTutorTicket();
@@ -354,7 +376,7 @@
       this._registerServiceWorker();
       this._loadI18n();
       this._initSearchAndContent();
-      if (navigator.onLine) this._flushQuestionQueue();
+      if (navigator.onLine) { this._flushQuestionQueue(); this._flushVoiceActionQueue(); }
     }
 
     disconnectedCallback() {
@@ -632,6 +654,8 @@
               </label>
               <div class="voice-controls">
                 <button type="button" class="secondary voice-button" id="microphone" aria-pressed="false"></button>
+                <button type="button" class="secondary voice-button" id="voice-command" aria-pressed="false"></button>
+                <button type="button" class="secondary" id="voice-guide"></button>
                 <button type="button" class="secondary" id="stop-voice" hidden></button>
                 <button type="button" class="secondary" id="read-back" hidden></button>
               </div>
@@ -719,7 +743,7 @@
         error: $("question-error"),
         cloudConsentRow: $("cloud-consent-row"), cloudConsent: $("cloud-consent"),
         cloudConsentLabel: $("cloud-consent-label"),
-        send: $("send"), microphone: $("microphone"), stopVoice: $("stop-voice"), readBack: $("read-back"),
+        send: $("send"), microphone: $("microphone"), voiceCommand: $("voice-command"), voiceGuide: $("voice-guide"), stopVoice: $("stop-voice"), readBack: $("read-back"),
         voiceStatus: $("voice-status"), voiceNote: $("voice-note"), voiceNoteLabel: $("voice-note-label"), voicePlayer: $("voice-player"),
         voiceHelp: $("voice-help"),
         escalation: $("escalation"), escalationNoteLabel: $("escalation-note-label"), escalationNote: $("escalation-note"),
@@ -771,7 +795,7 @@
       e.close.addEventListener("click", () => this._close());
       e.studyPackExport.addEventListener("click", () => this._exportStudyPack());
       e.form.addEventListener("submit", (event) => this._onSubmit(event));
-      this._onlineHandler = () => this._flushQuestionQueue();
+      this._onlineHandler = () => { this._flushQuestionQueue(); this._flushVoiceActionQueue(); };
       window.addEventListener("online", this._onlineHandler);
       e.input.addEventListener("keydown", (event) => {
         if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
@@ -794,6 +818,8 @@
       e.screenContextStart.addEventListener("click", () => this._sharePageContext());
       e.screenShareStop.addEventListener("click", () => this._stopScreenShare());
       e.microphone.addEventListener("click", () => this._startVoiceInput());
+      e.voiceCommand.addEventListener("click", () => this._startVoiceCommand());
+      e.voiceGuide.addEventListener("click", () => this._loadVoiceGuide());
       e.stopVoice.addEventListener("click", () => this._stopVoice());
       e.readBack.addEventListener("click", () => this._speakText(e.input.value, this._pack.lang, e.voiceStatus));
       e.escalation.addEventListener("submit", (event) => this._submitEscalation(event));
@@ -958,6 +984,9 @@
       this._messages = [];
       this._learnerTickets = [];
       this._pendingTutorTicketId = "";
+      this._voiceCommandDraft = null;
+      this._voiceActionQueue = [];
+      try { localStorage.removeItem(this._voiceDraftKey); localStorage.removeItem(this._voiceQueueKey); } catch { /* Existing clear operation removed all assistant keys. */ }
       e.checkTutorReply.hidden = true;
       e.escalationStatus.textContent = this._pack.strings.clearLocalDataDone;
       e.questionQueueStatus.textContent = "";
@@ -1259,6 +1288,11 @@
       write(e.microphone, "microphone");
       e.microphone.setAttribute("aria-label", s.microphone);
       e.microphone.lang = pack.lang;
+      write(e.voiceCommand, "voiceCommand");
+      e.voiceCommand.setAttribute("aria-label", s.voiceCommand || en.strings.voiceCommand);
+      e.voiceCommand.lang = pack.lang;
+      write(e.voiceGuide, "voiceGuide");
+      e.voiceGuide.lang = pack.lang;
       write(e.voiceHelp, "speechLimitations");
       write(e.stopVoice, "stop");
       write(e.readBack, "readBack");
@@ -1727,8 +1761,217 @@
 
     _setVoiceState(active, mode = "") {
       this._voiceMode = mode;
-      this._els.microphone.setAttribute("aria-pressed", active ? "true" : "false");
+      const commandMode = mode.startsWith("voice-command");
+      this._els.microphone.setAttribute("aria-pressed", active && !commandMode ? "true" : "false");
+      this._els.voiceCommand.setAttribute("aria-pressed", active && commandMode ? "true" : "false");
       this._els.stopVoice.hidden = !active;
+    }
+
+    _startVoiceCommand() {
+      if (this._voiceMode) {
+        this._stopVoice();
+        return;
+      }
+      // Use browser capture and local server transcription for task commands.
+      // The Web Speech API may send audio to a browser vendor, so it is reserved
+      // for the separate, user-invoked dictation control.
+      this._startVoiceRecorder({ voiceCommand: true });
+    }
+
+    _restoreVoiceCommandState() {
+      try {
+        this._voiceCommandDraft = JSON.parse(localStorage.getItem(this._voiceDraftKey) || "null");
+        if (!this._voiceCommandDraft?.draftToken || !this._voiceCommandDraft?.idempotencyKey) this._voiceCommandDraft = null;
+      } catch { this._voiceCommandDraft = null; }
+      try {
+        const queue = JSON.parse(localStorage.getItem(this._voiceQueueKey) || "[]");
+        this._voiceActionQueue = Array.isArray(queue) ? queue.filter((item) => item && typeof item.id === "string") : [];
+      } catch { this._voiceActionQueue = []; }
+    }
+
+    _newVoiceActionKey() {
+      return globalThis.crypto?.randomUUID?.() || `voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    async _loadVoiceGuide() {
+      const strings = this._pack?.strings || en.strings;
+      this._els.voiceGuide.disabled = true;
+      this._els.voiceStatus.textContent = strings.listening;
+      try {
+        const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+        const response = await fetch(`${base}/api/v1/voice/guide?language=${encodeURIComponent(this._pack?.lang || "en")}`, { cache: "no-store" });
+        if (!response.ok) throw new Error("Guide request failed");
+        const guide = await response.json();
+        const text = typeof guide.text === "string" ? guide.text : (guide.steps || []).join("\n");
+        this._appendMessage({ role: "assistant", text, lang: guide.language || this._pack.lang });
+        if (guide.speakText) this._speakText(guide.speakText, guide.language || this._pack.lang, this._els.voiceStatus);
+      } catch {
+        this._els.voiceStatus.textContent = strings.voiceCommandGuideFailed || en.strings.voiceCommandGuideFailed;
+      } finally {
+        this._els.voiceGuide.disabled = false;
+      }
+    }
+
+    async _submitVoiceCommand(command) {
+      const strings = this._pack?.strings || en.strings;
+      const language = this._pack?.lang || "en";
+      const transcript = typeof command.transcript === "string" ? command.transcript.trim() : "";
+      const draft = this._voiceCommandDraft;
+      const idempotencyKey = draft?.idempotencyKey || this._newVoiceActionKey();
+      const payload = {
+        language,
+        shareConsent: Boolean(this._els.consent.checked),
+        page: draft?.draftToken ? undefined : location.href,
+        ...(transcript ? { transcript } : {}),
+        ...(Number.isFinite(command.confidence) ? { confidence: command.confidence } : {}),
+        ...(command.audioDataUrl ? { audioDataUrl: command.audioDataUrl, audioMimeType: command.audioMimeType } : {}),
+        ...(draft?.draftToken ? { draftToken: draft.draftToken } : {})
+      };
+      if (!draft?.draftToken && this._els.consent.checked) {
+        payload.conversation = this._messages
+          .filter((message) => ["user", "assistant"].includes(message.role) && typeof message.text === "string")
+          .slice(-20)
+          .map((message) => ({ role: message.role, text: message.text.slice(0, 4000) }));
+      }
+      const pendingTicket = this._learnerTickets.find((ticket) => ticket.ticketId === this._pendingTutorTicketId);
+      if (/reply|status|ምላሽ|መልሲ|رد/i.test(transcript) && pendingTicket) {
+        payload.ticketId = pendingTicket.ticketId;
+        payload.ticketAccessToken = pendingTicket.accessToken;
+      }
+      if (/accommodation|accessibility accommodation|ማስተካከያ|تيسير/i.test(transcript)) {
+        if (this._els.accommodationJob.value) payload.jobId = this._els.accommodationJob.value;
+        if (this._els.accommodationChoice.value) payload.accommodation = this._els.accommodationChoice.value;
+      }
+      if (transcript) {
+        this._appendMessage({ role: "user", text: transcript, lang: language });
+        this._emit("question", { text: transcript, language, input: "voice" });
+        if (payload.conversation) payload.conversation = payload.conversation.concat({ role: "user", text: transcript.slice(0, 4000) }).slice(-20);
+      }
+      this._els.voiceStatus.textContent = strings.voiceCommandListening || en.strings.voiceCommandListening;
+      if (!navigator.onLine) {
+        this._queueVoiceAction({ ...payload, idempotencyKey }, strings);
+        return;
+      }
+      try {
+        const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+        const response = await fetch(`${base}/api/v1/voice/commands`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(draft?.draftToken ? { "Idempotency-Key": idempotencyKey } : {}) },
+          body: JSON.stringify(payload),
+          cache: "no-store"
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          if ((response.status >= 500 && !payload.audioDataUrl) || response.status === 429) {
+            this._queueVoiceAction({ ...payload, idempotencyKey }, strings);
+            return;
+          }
+          this._els.voiceStatus.textContent = typeof result.detail === "string" ? result.detail : (strings.voiceCommandFailed || en.strings.voiceCommandFailed);
+          return;
+        }
+        this._handleVoiceCommandResult(result, transcript ? true : false);
+      } catch (error) {
+        if (error instanceof TypeError) this._queueVoiceAction({ ...payload, idempotencyKey }, strings);
+        else this._els.voiceStatus.textContent = strings.voiceCommandFailed || en.strings.voiceCommandFailed;
+      }
+    }
+
+    _queueVoiceAction(payload, strings = this._pack?.strings || en.strings) {
+      const item = {
+        ...payload,
+        id: this._newVoiceActionKey(),
+        idempotencyKey: payload.idempotencyKey || this._newVoiceActionKey(),
+        expiresAt: Math.floor(Date.now() / 1000) + 24 * 60 * 60
+      };
+      if (item.draftToken && this._voiceCommandDraft?.expiresAt) item.expiresAt = Math.min(item.expiresAt, this._voiceCommandDraft.expiresAt);
+      if (typeof item.audioDataUrl === "string" && item.audioDataUrl.length > 1_600_000) {
+        this._els.voiceStatus.textContent = strings.voiceCommandFailed || en.strings.voiceCommandFailed;
+        return false;
+      }
+      this._voiceActionQueue.push(item);
+      this._voiceActionQueue = this._voiceActionQueue.slice(-20);
+      try {
+        localStorage.setItem(this._voiceQueueKey, JSON.stringify(this._voiceActionQueue));
+        this._els.voiceStatus.textContent = strings.voiceCommandQueued || en.strings.voiceCommandQueued;
+        if (navigator.onLine) setTimeout(() => this._flushVoiceActionQueue(), 1500);
+        return true;
+      } catch {
+        this._voiceActionQueue.pop();
+        this._els.voiceStatus.textContent = strings.voiceCommandFailed || en.strings.voiceCommandFailed;
+        return false;
+      }
+    }
+
+    async _flushVoiceActionQueue() {
+      if (!navigator.onLine || this._flushingVoiceActionQueue || !this._voiceActionQueue.length) return;
+      this._flushingVoiceActionQueue = true;
+      try {
+        const base = (this.getAttribute("api") || location.origin).replace(/\/$/, "");
+        const response = await fetch(`${base}/api/v1/voice/actions/sync`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ actions: this._voiceActionQueue }), cache: "no-store"
+        });
+        if (!response.ok) return;
+        const result = await response.json();
+        const results = Array.isArray(result.results) ? result.results : [];
+        const rejectedIds = new Set();
+        for (const actionResult of results) {
+          if (actionResult.status === "rejected") rejectedIds.add(actionResult.id);
+          const queuedItem = this._voiceActionQueue.find((item) => item.id === actionResult.id);
+          this._handleVoiceCommandResult(actionResult, Boolean(queuedItem?.transcript));
+        }
+        this._voiceActionQueue = this._voiceActionQueue.filter((item) => rejectedIds.has(item.id));
+        localStorage.setItem(this._voiceQueueKey, JSON.stringify(this._voiceActionQueue));
+      } catch {
+        // Keep local drafts for the next online event or explicit retry.
+      } finally {
+        this._flushingVoiceActionQueue = false;
+      }
+    }
+
+    _handleVoiceCommandResult(result, userAlreadyShown = false) {
+      const strings = this._pack?.strings || en.strings;
+      const language = result.language || this._pack?.lang || "en";
+      if (!userAlreadyShown && result.transcript) {
+        this._appendMessage({ role: "user", text: result.transcript, lang: language });
+        this._emit("question", { text: result.transcript, language, input: "voice" });
+      }
+      let answerText = result.answerText || strings.voiceCommandFailed || en.strings.voiceCommandFailed;
+      if (result.status === "consent_required") {
+        answerText = strings.voiceCommandConsent || en.strings.voiceCommandConsent;
+        this._els.escalation.hidden = false;
+        this._els.consent.focus();
+      } else if (result.status === "clarification_required" || result.status === "draft_changed") {
+        answerText = result.answerText || strings.voiceCommandClarify || en.strings.voiceCommandClarify;
+      } else if (result.status === "draft" && result.draftToken) {
+        this._voiceCommandDraft = {
+          draftToken: result.draftToken,
+          idempotencyKey: this._newVoiceActionKey(),
+          expiresAt: Math.floor(Date.now() / 1000) + 5 * 60
+        };
+        try { localStorage.setItem(this._voiceDraftKey, JSON.stringify(this._voiceCommandDraft)); } catch { /* The signed draft remains in memory. */ }
+        const review = (result.draft?.conversation || [])
+          .map((message) => `${message.role === "assistant" ? strings.assistant : strings.you}: ${message.text}`)
+          .join("\n");
+        if (review) answerText += `\n\n${review}`;
+      } else if (result.status === "sent" && result.ticket?.ticketId) {
+        this._rememberLearnerTicket(result.ticket);
+        this._pendingTutorTicketId = result.ticket.ticketId;
+        try { localStorage.setItem(this._pendingTutorKey, this._pendingTutorTicketId); } catch { /* Keep in-memory reply checks. */ }
+        this._els.checkTutorReply.hidden = false;
+        this._els.consent.checked = false;
+        this._voiceCommandDraft = null;
+        try { localStorage.removeItem(this._voiceDraftKey); } catch { /* Ignore storage failure. */ }
+        this._emit("escalated", { ticketId: result.ticket.ticketId, source: "voice" });
+      }
+      const sources = Array.isArray(result.sources) ? result.sources : [];
+      const links = sources.filter((source) => source?.url && source?.title).map((source) => ({ url: source.url, title: source.title }));
+      this._appendMessage({
+        role: "assistant", text: answerText, lang: language, links,
+        answerStatus: result.grounding?.status === "verified" ? "answered" : undefined,
+        showPerson: result.action === "ask" && result.status !== "answered" && !links.length
+      });
+      this._speakText(result.answerText || answerText, language, this._els.voiceStatus);
     }
 
     _startVoiceInput() {
@@ -1794,15 +2037,18 @@
       try { recognition?.stop(); } catch { /* Recognition may already have stopped. */ }
     }
 
-    async _startVoiceRecorder() {
+    async _startVoiceRecorder({ voiceCommand = false } = {}) {
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder || !window.isSecureContext) {
         this._setVoiceState(false);
         this._els.voiceStatus.textContent = this._pack.strings.voiceUnavailable;
         return;
       }
-      this._setVoiceState(true, "recording-pending");
+      this._voiceCommandRecording = voiceCommand;
+      this._setVoiceState(true, voiceCommand ? "voice-command-recording-pending" : "recording-pending");
       const generation = ++this._voiceGeneration;
-      this._els.voiceStatus.textContent = this._pack.strings.recording;
+      this._els.voiceStatus.textContent = voiceCommand
+        ? (this._pack.strings.voiceCommandListening || en.strings.voiceCommandListening)
+        : this._pack.strings.recording;
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (generation !== this._voiceGeneration) {
@@ -1818,12 +2064,22 @@
         });
         recorder.addEventListener("stop", () => {
           const blob = new Blob(this._voiceChunks, { type: recorder.mimeType || "audio/webm" });
-          this._voiceBlob = blob.size ? blob : null;
+          const commandRecording = this._voiceCommandRecording;
+          this._voiceCommandRecording = false;
+          if (!commandRecording) this._voiceBlob = blob.size ? blob : null;
           for (const track of stream.getTracks()) track.stop();
           this._mediaStream = null;
           this._mediaRecorder = null;
           this._setVoiceState(false);
-          if (this._voiceBlob) {
+          if (commandRecording && blob.size) {
+            this._els.voiceStatus.textContent = this._pack.strings.listening || en.strings.listening;
+            void this._blobAsDataUrl(blob).then((audioDataUrl) => this._submitVoiceCommand({
+              audioDataUrl,
+              audioMimeType: blob.type || "audio/webm"
+            })).catch(() => {
+              this._els.voiceStatus.textContent = this._pack.strings.voiceCommandFailed || en.strings.voiceCommandFailed;
+            });
+          } else if (this._voiceBlob) {
             if (this._voiceObjectUrl) URL.revokeObjectURL(this._voiceObjectUrl);
             this._voiceObjectUrl = URL.createObjectURL(this._voiceBlob);
             this._els.voicePlayer.src = this._voiceObjectUrl;
@@ -1832,7 +2088,7 @@
           }
         }, { once: true });
         recorder.start();
-        this._voiceMode = "recording";
+        this._voiceMode = voiceCommand ? "voice-command-recording" : "recording";
       } catch {
         for (const track of this._mediaStream?.getTracks?.() || []) track.stop();
         this._mediaStream = null;
@@ -1843,7 +2099,7 @@
     }
 
     _stopVoice() {
-      if (this._voiceMode === "recognition" && this._recognition) {
+      if (this._voiceMode.endsWith("recognition") && this._recognition) {
         this._ignoreRecognitionEnd = true;
         const recognition = this._recognition;
         this._recognition = null;
@@ -1852,9 +2108,9 @@
         this._els.voiceStatus.textContent = this._pack.strings.stopped;
         return;
       }
-      if ((this._voiceMode === "recording" || this._voiceMode === "recording-pending") && this._mediaRecorder?.state === "recording") {
+      if ((this._voiceMode === "recording" || this._voiceMode === "recording-pending" || this._voiceMode === "voice-command-recording") && this._mediaRecorder?.state === "recording") {
         this._mediaRecorder.stop();
-      } else if (this._voiceMode === "recording-pending") {
+      } else if (this._voiceMode === "recording-pending" || this._voiceMode === "voice-command-recording-pending") {
         this._voiceGeneration++;
         for (const track of this._mediaStream?.getTracks?.() || []) track.stop();
         this._mediaStream = null;

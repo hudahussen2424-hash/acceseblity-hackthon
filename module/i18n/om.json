@@ -120,6 +120,14 @@
     "studyPackEmpty": "Deebii faayidaa qabu kuusi; boodarra interneetii malee irra deebi’ii ilaali.",
     "studyPackExport": "Kuusaa qorannoo buusi",
     "studyPackSaved": "Irra deebi’anii ilaaluuf kuufameera.",
-    "studyPackRemoved": "Kuusaa qorannoo keessaa haqameera."
+    "studyPackRemoved": "Kuusaa qorannoo keessaa haqameera.",
+    "voiceCommand": "Hojii sagaleedhaan dubbadhu",
+    "voiceGuide": "Gargaartuu kana akkamitti akka fayyadamtu",
+    "voiceCommandListening": "Hojii kee nan dhaggeeffadha. Waa’ee barnootaa ykn hojii gaafadhu, barsiisaa gaafadhu, ykn erga gaaffii qophaa’e ilaallee booda “ergi” jedhi.",
+    "voiceCommandQueued": "Bilbila kana irratti kuufameera. Yeroo interneetiin argamu ni hojjetama. Erguuf raggaasisa ifa ta’e fi gaaffii qophaa’e hin xumuramne barbaachisa.",
+    "voiceCommandConsent": "Mariicha qooduuf Nama waliin haasa’i bani, sanduuqa hayyamaa filadhu, achiis gaaffii barsiisaa irra deebi’ii dubbadhu.",
+    "voiceCommandFailed": "Gaaffii sagalee kana hojjechuu hin dandeenye. Bakka isaa barreessi.",
+    "voiceCommandClarify": "Sirriitti hubachuu hin dandeenye. Maaloo irra deebi’ii dubbadhu ykn barreessi.",
+    "voiceCommandGuideFailed": "Qajeelfamni itti fayyadamaa hin argamne. Walqabsiisa kee mirkaneessiitii irra deebi’i."
   }
 }

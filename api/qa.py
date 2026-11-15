@@ -71,6 +71,7 @@ async def answer_question(
     provider=None,
     *,
     allow_cloud: bool = True,
+    offline_only: bool = False,
 ) -> dict:
     ranked = retrieve(question, sections, language)
     best_score, best = ranked[0] if ranked else (0.0, None)
@@ -108,6 +109,8 @@ async def answer_question(
         name = os.getenv("AI_PROVIDER", "none").strip().lower()
         providers = {"none": "none", "local": "local", "cloud": "cloud"}
         if name not in providers:
+            name = "none"
+        if offline_only:
             name = "none"
         if name == "cloud" and not allow_cloud:
             name = "none"
