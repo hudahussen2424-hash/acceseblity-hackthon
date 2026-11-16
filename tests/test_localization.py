@@ -2,7 +2,7 @@ import json
 import re
 from pathlib import Path
 
-from api.main import SUPPORTED_LANGUAGES, indexed_sections
+from api.main import SUPPORTED_LANGUAGES, _HANDOFF_REASONS, indexed_sections
 from api.voice import LANGUAGES
 
 
@@ -16,7 +16,9 @@ def test_selector_api_voice_and_locale_files_share_one_language_set():
         if path.name != "topics.json"
     }
     component = (ROOT / "module" / "db-assistant.js").read_text(encoding="utf-8")
-    selector = set(re.findall(r'<option value="([a-z]+)"', component))
+    language_selector = re.search(r'<select id="language-select".*?</select>', component, re.DOTALL)
+    assert language_selector
+    selector = set(re.findall(r'<option value="([a-z]+)"', language_selector.group()))
 
     assert locale_files == SUPPORTED_LANGUAGES == set(LANGUAGES) == selector
 
@@ -24,14 +26,37 @@ def test_selector_api_voice_and_locale_files_share_one_language_set():
 def test_offered_locales_are_complete_or_explicitly_marked_incomplete():
     english = json.loads((LOCALE_DIR / "en.json").read_text(encoding="utf-8"))
     required_keys = set(english["strings"]) - {"translationIncomplete"}
+    request_reason_keys = {
+        "escalationReasonLabel",
+        "escalationReasonChoose",
+        "escalationReasonAnswerNotFound",
+        "escalationReasonPerson",
+        "escalationReasonIncorrect",
+        "escalationReasonOther",
+        "escalationReasonRequired",
+        "escalationOtherDetails",
+        "escalationOtherRequired",
+        "microphonePermissionDenied",
+        "voiceCommandUnavailable",
+    }
 
     for language in SUPPORTED_LANGUAGES:
         locale = json.loads((LOCALE_DIR / f"{language}.json").read_text(encoding="utf-8"))
+        assert request_reason_keys <= set(locale["strings"])
         if language == "ar":
             assert locale["incomplete"] is True
             assert locale["strings"]["translationIncomplete"]
         else:
             assert required_keys <= set(locale["strings"])
+
+
+def test_tutor_request_choices_match_supported_handoff_reasons():
+    component = (ROOT / "module" / "db-assistant.js").read_text(encoding="utf-8")
+    selector = re.search(r'<select id="escalation-reason".*?</select>', component, re.DOTALL)
+    assert selector
+    choices = set(re.findall(r'<option value="([^"]+)"', selector.group()))
+
+    assert choices - {""} == _HANDOFF_REASONS
 
 
 def test_amharic_job_index_uses_localized_titles_and_descriptions():

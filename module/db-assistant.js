@@ -410,11 +410,21 @@
               <button type="submit" id="accommodation-send"></button>
             </form>
             <form id="escalation" class="escalation" novalidate hidden>
+              <label for="escalation-reason" id="escalation-reason-label"></label>
+              <select id="escalation-reason" name="handoffReason" required aria-required="true">
+                <option value=""></option>
+                <option value="answer_not_found"></option>
+                <option value="learner_requested_person"></option>
+                <option value="answer_flagged_incorrect"></option>
+                <option value="other"></option>
+              </select>
+              <p id="escalation-reason-error" class="error" role="alert" hidden></p>
               <label for="escalation-phone" id="escalation-phone-label"></label>
               <input id="escalation-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel">
               <p id="phone-error" class="error" role="alert" hidden></p>
               <label for="escalation-note" id="escalation-note-label"></label>
-              <textarea id="escalation-note" name="note" rows="2" dir="auto"></textarea>
+              <textarea id="escalation-note" name="note" rows="2" dir="auto" aria-required="false"></textarea>
+              <p id="escalation-other-error" class="error" role="alert" hidden></p>
               <label class="consent" for="consent"><input id="consent" type="checkbox"><span id="consent-label"></span></label>
               <p id="tutor-availability" role="note"></p>
               <section class="screen-share" aria-labelledby="screen-share-title">
@@ -482,6 +492,8 @@
         voiceStatus: $("voice-status"), voiceNote: $("voice-note"), voiceNoteLabel: $("voice-note-label"), voicePlayer: $("voice-player"),
         voiceHelp: $("voice-help"),
         escalation: $("escalation"), escalationNoteLabel: $("escalation-note-label"), escalationNote: $("escalation-note"),
+        escalationReasonLabel: $("escalation-reason-label"), escalationReason: $("escalation-reason"),
+        escalationReasonError: $("escalation-reason-error"), escalationOtherError: $("escalation-other-error"),
         escalationPhoneLabel: $("escalation-phone-label"), escalationPhone: $("escalation-phone"), phoneError: $("phone-error"),
         consent: $("consent"), consentLabel: $("consent-label"), escalationStatus: $("escalation-status"),
         tutorAvailability: $("tutor-availability"),
@@ -545,6 +557,22 @@
         e.phoneError.hidden = true;
         e.escalationPhone.removeAttribute("aria-invalid");
         e.escalationPhone.removeAttribute("aria-describedby");
+      });
+      e.escalationReason.addEventListener("change", () => {
+        e.escalationReasonError.hidden = true;
+        e.escalationReason.removeAttribute("aria-invalid");
+        e.escalationReason.removeAttribute("aria-describedby");
+        e.escalationOtherError.hidden = true;
+        e.escalationNote.removeAttribute("aria-invalid");
+        e.escalationNote.removeAttribute("aria-describedby");
+        this._updateEscalationReasonState();
+      });
+      e.escalationNote.addEventListener("input", () => {
+        if (e.escalationNote.value.trim()) {
+          e.escalationOtherError.hidden = true;
+          e.escalationNote.removeAttribute("aria-invalid");
+          e.escalationNote.removeAttribute("aria-describedby");
+        }
       });
       e.languageSelect.addEventListener("change", () => this.setAttribute("lang", e.languageSelect.value));
       e.person.addEventListener("click", () => this._openEscalation());
@@ -1056,7 +1084,21 @@
       write(e.stopVoice, "stop");
       write(e.readBack, "readBack");
       write(e.voiceNoteLabel, "voiceNote");
-      write(e.escalationNoteLabel, "escalationNote");
+      write(e.escalationReasonLabel, "escalationReasonLabel");
+      const reasonOptions = [
+        ["", "escalationReasonChoose"],
+        ["answer_not_found", "escalationReasonAnswerNotFound"],
+        ["learner_requested_person", "escalationReasonPerson"],
+        ["answer_flagged_incorrect", "escalationReasonIncorrect"],
+        ["other", "escalationReasonOther"]
+      ];
+      for (const [value, key] of reasonOptions) {
+        const option = e.escalationReason.querySelector(`option[value="${value}"]`);
+        write(option, key);
+        option.lang = pack.lang;
+      }
+      write(e.escalationReasonError, "escalationReasonRequired");
+      write(e.escalationOtherError, "escalationOtherRequired");
       write(e.escalationPhoneLabel, "phoneLabel");
       write(e.consentLabel, "consent");
       write(e.sendEscalation, "sendEscalation");
@@ -1089,6 +1131,7 @@
       e.launcher.disabled = false;
       e.languageSelect.value = pack.lang;
       e.checkTutorReply.hidden = !this._pendingTutorTicketId;
+      this._updateEscalationReasonState();
       this._renderLearnerTickets();
       this._populateAccommodationChoices();
       if (this._errorKey) this._setError(this._errorKey);
@@ -1621,6 +1664,10 @@
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) {
+          if (payload.audioDataUrl && response.status === 503) {
+            this._els.voiceStatus.textContent = strings.voiceCommandUnavailable || en.strings.voiceCommandUnavailable;
+            return;
+          }
           if ((response.status >= 500 && !payload.audioDataUrl) || response.status === 429) {
             this._queueVoiceAction({ ...payload, idempotencyKey }, strings);
             return;
@@ -1768,10 +1815,14 @@
           this._startVoiceRecorder();
         }
       };
-      recognition.onerror = () => {
+      recognition.onerror = (event) => {
         if (this._recognition !== recognition) return;
         this._recognition = null;
         this._setVoiceState(false);
+        if (event?.error === "not-allowed") {
+          this._els.voiceStatus.textContent = this._pack.strings.microphonePermissionDenied || en.strings.microphonePermissionDenied;
+          return;
+        }
         if (!this._recognitionGotResult) this._startVoiceRecorder();
       };
       recognition.onend = () => {
@@ -1783,8 +1834,13 @@
       };
       try {
         recognition.start();
-      } catch {
+      } catch (error) {
         this._recognition = null;
+        if (error?.name === "NotAllowedError" || error?.name === "SecurityError") {
+          this._setVoiceState(false);
+          this._els.voiceStatus.textContent = this._pack.strings.microphonePermissionDenied || en.strings.microphonePermissionDenied;
+          return;
+        }
         this._startVoiceRecorder();
       }
     }
@@ -1848,12 +1904,15 @@
         }, { once: true });
         recorder.start();
         this._voiceMode = voiceCommand ? "voice-command-recording" : "recording";
-      } catch {
+      } catch (error) {
         for (const track of this._mediaStream?.getTracks?.() || []) track.stop();
         this._mediaStream = null;
         this._mediaRecorder = null;
         this._setVoiceState(false);
-        this._els.voiceStatus.textContent = this._pack.strings.voiceUnavailable;
+        const permissionDenied = error?.name === "NotAllowedError" || error?.name === "PermissionDeniedError";
+        this._els.voiceStatus.textContent = permissionDenied
+          ? this._pack.strings.microphonePermissionDenied || en.strings.microphonePermissionDenied
+          : this._pack.strings.voiceUnavailable;
       }
     }
 
@@ -1904,8 +1963,20 @@
     _openEscalation() {
       this._els.escalation.hidden = false;
       this._els.checkTutorReply.hidden = !this._pendingTutorTicketId;
-      this._els.escalationNote.focus();
+      this._els.escalationReason.focus();
       this._emit("person", {});
+    }
+
+    _updateEscalationReasonState() {
+      const e = this._els;
+      const strings = this._pack?.strings || en.strings;
+      const requiresDetails = e.escalationReason.value === "other";
+      e.escalationNoteLabel.textContent = requiresDetails
+        ? strings.escalationOtherDetails || en.strings.escalationOtherDetails
+        : strings.escalationNote || en.strings.escalationNote;
+      e.escalationNoteLabel.lang = this._pack?.lang || "en";
+      e.escalationNote.required = requiresDetails;
+      e.escalationNote.setAttribute("aria-required", String(requiresDetails));
     }
 
     _ticketReference(ticketId) {
@@ -2240,6 +2311,17 @@
     async _submitEscalation(event) {
       event.preventDefault();
       const e = this._els;
+      const handoffReason = e.escalationReason.value;
+      if (!handoffReason) {
+        e.escalationReasonError.hidden = false;
+        e.escalationReason.setAttribute("aria-invalid", "true");
+        e.escalationReason.setAttribute("aria-describedby", "escalation-reason-error");
+        e.escalationReason.focus();
+        return;
+      }
+      e.escalationReasonError.hidden = true;
+      e.escalationReason.removeAttribute("aria-invalid");
+      e.escalationReason.removeAttribute("aria-describedby");
       const rawPhone = e.escalationPhone.value.trim();
       const normalizedPhone = rawPhone ? normalizeEthiopianPhone(rawPhone) : "";
       if (rawPhone && !normalizedPhone) {
@@ -2251,12 +2333,23 @@
         e.escalationPhone.focus();
         return;
       }
+      if (handoffReason === "other" && !e.escalationNote.value.trim()) {
+        e.escalationOtherError.hidden = false;
+        e.escalationNote.setAttribute("aria-invalid", "true");
+        e.escalationNote.setAttribute("aria-describedby", "escalation-other-error");
+        e.escalationNote.focus();
+        return;
+      }
+      e.escalationOtherError.hidden = true;
+      e.escalationNote.removeAttribute("aria-invalid");
+      e.escalationNote.removeAttribute("aria-describedby");
       try {
         const conversation = e.consent.checked ? this._messages : [];
         const payload = {
           conversation,
           language: this._pack.lang,
           page: location.href,
+          handoffReason,
           note: e.escalationNote.value.trim(),
           phone: normalizedPhone
         };
@@ -2277,6 +2370,8 @@
         e.escalationStatus.textContent = `${this._pack.strings.escalationSent} ${this._ticketReference(result.ticketId)}`;
         this._emit("escalated", { ticketId: result.ticketId });
         e.escalationNote.value = "";
+        e.escalationReason.value = "";
+        this._updateEscalationReasonState();
         e.escalationPhone.value = "";
         e.consent.checked = false;
         this._voiceBlob = null;

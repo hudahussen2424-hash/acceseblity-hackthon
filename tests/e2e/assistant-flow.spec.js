@@ -26,8 +26,16 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
     element.addEventListener("db-assistant:escalated", (event) => resolve(event.detail.ticketId), { once: true });
   }));
   await assistant.getByRole("button", { name: "ከሰው ጋር ይነጋገሩ" }).click();
+  await assistant.locator("#escalation-reason").selectOption("learner_requested_person");
+  const createResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname === "/api/v1/escalations"
+  );
   await assistant.locator("#send-escalation").click();
+  const createResponse = await createResponsePromise;
+  expect(createResponse.status()).toBe(201);
   const ticketId = await ticketIdPromise;
+  expect((await createResponse.json()).ticketId).toBe(ticketId);
   expect(ticketId).toMatch(/^[0-9a-f-]{36}$/i);
   await expect(assistant.locator("#escalation-status")).toContainText(ticketId);
   await expect(assistant.locator("#check-tutor-reply")).toBeVisible();
@@ -36,6 +44,11 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
 
   const ticketUrl = `/api/v1/escalations/${ticketId}/reply`;
   const helperHeaders = { "X-Helper-Token": "e2e-helper-token" };
+  const inboxResponse = await request.get("/api/v1/escalations", { headers: helperHeaders });
+  expect(inboxResponse.status()).toBe(200);
+  const helperTicket = (await inboxResponse.json()).find((entry) => entry.ticketId === ticketId);
+  expect(helperTicket.handoffBrief.reason).toBe("learner_requested_person");
+  expect(helperTicket.conversation).toEqual([]);
   const updateResponse = await request.post(ticketUrl, {
     headers: helperHeaders,
     data: { text: "I am unavailable right now; I will follow up later.", resolve: false }
@@ -92,6 +105,144 @@ test("Amharic answer is linked and learners can follow up on a queued tutor requ
   await expect(returnedAssistant.locator("#escalation-status")).toContainText("Local assistant data cleared");
   await expect(returnedAssistant.locator("#messages .message")).toHaveCount(0);
   expect(await page.evaluate((key) => localStorage.getItem(key), await returnedAssistant.evaluate((element) => element._storageKey))).toBeNull();
+});
+
+test("learner conversation is included in a tutor ticket only after explicit consent", async ({ page, request }) => {
+  const helperHeaders = { "X-Helper-Token": "e2e-helper-token" };
+  const seeded = await request.post("/api/v1/content", { headers: helperHeaders, data: sections });
+  expect(seeded.status()).toBe(200);
+  const ticketIds = [];
+  try {
+    await page.goto("/demo/blank.html");
+    const assistant = page.locator("db-assistant");
+    await expect(assistant.locator("#launcher")).toBeEnabled();
+    await assistant.evaluate((element) => element.setAttribute("lang", "en"));
+    await expect(assistant.locator("#language-select")).toHaveValue("en");
+    await assistant.locator("#launcher").click();
+    const question = sections[1].titles.en;
+    await assistant.locator("#question").fill(question);
+    await assistant.locator("#send").click();
+    await expect(assistant.locator("#messages .message-assistant").last()).toBeVisible();
+
+    await assistant.getByRole("button", { name: "Talk to a person" }).click();
+    await assistant.locator("#escalation-reason").selectOption("learner_requested_person");
+    const firstCreate = page.waitForResponse((response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/v1/escalations"
+    );
+    await assistant.locator("#send-escalation").click();
+    const firstResponse = await firstCreate;
+    expect(firstResponse.status()).toBe(201);
+    ticketIds.push((await firstResponse.json()).ticketId);
+    await expect(assistant.locator("#escalation-status")).toContainText(ticketIds[0]);
+
+    let inbox = await request.get("/api/v1/escalations", { headers: helperHeaders });
+    let ticket = (await inbox.json()).find((entry) => entry.ticketId === ticketIds[0]);
+    expect(ticket.conversation).toEqual([]);
+
+    await assistant.locator("#escalation-reason").selectOption("answer_flagged_incorrect");
+    await assistant.locator("#consent").check();
+    const secondCreate = page.waitForResponse((response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/v1/escalations"
+    );
+    await assistant.locator("#send-escalation").click();
+    const secondResponse = await secondCreate;
+    expect(secondResponse.status()).toBe(201);
+    ticketIds.push((await secondResponse.json()).ticketId);
+    await expect(assistant.locator("#escalation-status")).toContainText(ticketIds[1]);
+
+    inbox = await request.get("/api/v1/escalations", { headers: helperHeaders });
+    ticket = (await inbox.json()).find((entry) => entry.ticketId === ticketIds[1]);
+    expect(ticket.handoffBrief.reason).toBe("answer_flagged_incorrect");
+    expect(ticket.conversation.some((message) => message.text === question)).toBe(true);
+    expect(ticket.conversation.some((message) => message.role === "assistant")).toBe(true);
+  } finally {
+    for (const ticketId of ticketIds) {
+      await request.delete(`/api/v1/escalations/${ticketId}`, { headers: helperHeaders });
+    }
+  }
+});
+
+test("tutor requests require a reason and send Other details to the helper inbox", async ({ page, request }) => {
+  let ticketId;
+  const helperHeaders = { "X-Helper-Token": "e2e-helper-token" };
+  try {
+    await page.goto("/demo/blank.html");
+    const assistant = page.locator("db-assistant");
+    await expect(assistant.locator("#launcher")).toBeEnabled();
+    await assistant.evaluate((element) => element.setAttribute("lang", "en"));
+    await expect(assistant.locator("#language-select")).toHaveValue("en");
+    await assistant.locator("#launcher").click();
+    await assistant.getByRole("button", { name: "Talk to a person" }).click();
+
+    const reason = assistant.locator("#escalation-reason");
+    await expect(reason).toHaveJSProperty("required", true);
+    await expect(reason.locator("option")).toHaveText([
+      "Choose a request type",
+      "I couldn't find the answer in the course",
+      "I want to speak with a tutor",
+      "I think an answer is incorrect",
+      "Other"
+    ]);
+
+    await assistant.locator("#send-escalation").click();
+    await expect(reason).toHaveAttribute("aria-invalid", "true");
+    await expect(assistant.locator("#escalation-reason-error")).toBeVisible();
+    await expect(reason).toBeFocused();
+
+    await reason.selectOption("other");
+    await expect(assistant.locator("#escalation-note-label")).toHaveText("Describe what you need help with");
+    await expect(assistant.locator("#escalation-note")).toHaveJSProperty("required", true);
+    await assistant.locator("#send-escalation").click();
+    await expect(assistant.locator("#escalation-other-error")).toBeVisible();
+    await expect(assistant.locator("#escalation-note")).toHaveAttribute("aria-invalid", "true");
+
+    await assistant.locator("#escalation-note").fill("I need help with a course access issue.");
+    const createResponse = page.waitForResponse((response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/v1/escalations"
+    );
+    await assistant.locator("#send-escalation").click();
+    const response = await createResponse;
+    expect(response.status()).toBe(201);
+    ticketId = (await response.json()).ticketId;
+    await expect(assistant.locator("#escalation-status")).toContainText(ticketId);
+
+    const ticketsResponse = await request.get("/api/v1/escalations", { headers: helperHeaders });
+    expect(ticketsResponse.status()).toBe(200);
+    const ticket = (await ticketsResponse.json()).find((entry) => entry.ticketId === ticketId);
+    expect(ticket.handoffBrief.reason).toBe("other");
+    expect(ticket.note).toBe("I need help with a course access issue.");
+  } finally {
+    if (ticketId) {
+      await request.delete(`/api/v1/escalations/${ticketId}`, { headers: helperHeaders });
+    }
+  }
+});
+
+test("course source links from the blank demo open the cited course section", async ({ page }) => {
+  const section = sections[0];
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("lang", "en"));
+  await expect(assistant.locator("#language-select")).toHaveValue("en");
+  await assistant.locator("#launcher").click();
+  await assistant.locator("#question").fill("What is shaping the future of virtual assistant work?");
+  await assistant.locator("#send").click();
+
+  const courseLink = assistant.locator("#messages .message-assistant a.course-link").last();
+  await expect(courseLink).toHaveAttribute("href", section.url);
+  const navigationResponse = page.waitForResponse((response) =>
+    response.request().isNavigationRequest() &&
+    new URL(response.url()).pathname === "/savanna/pages/concept-with-navigation.html"
+  );
+  await courseLink.click();
+  const response = await navigationResponse;
+  expect(response.status()).toBe(200);
+  await expect(page).toHaveURL(new RegExp(`/savanna/pages/concept-with-navigation\\.html#${section.id}$`));
+  await expect(page.locator(`#${section.id}`)).toBeVisible();
 });
 
 test("accommodation request announces its queued ticket ID", async ({ page, request }) => {

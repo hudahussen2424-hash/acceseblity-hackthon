@@ -13,5 +13,7 @@ services:
         value: /tmp/escalations.sqlite3
       - key: AI_PROVIDER
         value: none
+      - key: OFFLINE_MODE
+        value: "true"
       - key: WEBHOOK_URL
         value: ""

@@ -70,6 +70,14 @@ docker compose up
 - API docs: http://localhost:8081/docs
 - Helper inbox: http://localhost:8081/helper
 
+With Docker Compose, `/helper` and `/docs` are served by the API on port `8081`, not by the learner-facing site on port `8080`.
+
+## Render demo deployment
+
+The root `render.yaml` defines a free Docker web service. Connect the GitHub repository to Render as a Blueprint and deploy the `main` branch. The container binds to Render's `PORT` value (and defaults to `8000` for local runs); `/health/ready` is the readiness check. Render generates `HELPER_TOKEN` for the service. Keep integrations offline for the demo; do not add SMS, Telegram, cloud AI, or webhook credentials to the repository.
+
+The free service stores SQLite data at `/tmp/escalations.sqlite3`, which is ephemeral. Use test data only; tutor tickets may be lost when the instance restarts or is replaced. This Blueprint is for a demo, not live learner data or production use.
+
 ## Configuration
 
 The app reads settings from `.env`. The following values are the main ones you will adjust:
@@ -321,13 +329,14 @@ These checks provide local integration evidence for the project, but they are no
 
 ### Verification record — 2026-11-16
 
-- `npm.cmd run build:module` and `npm.cmd run check:module-size` completed successfully. The generated `module/db-assistant.min.js` bundle is 20.63 KB gzipped (21,122 bytes).
+- `npm.cmd run build:module` and `npm.cmd run check:module-size` completed successfully. The generated `module/db-assistant.min.js` bundle is 21.22 KB gzipped (21,729 bytes).
 - `npm.cmd test` passed all 37 JavaScript tests.
-- `python -m pytest -q` passed all 111 Python tests. Pytest reported one Starlette/httpx deprecation warning. Python syntax checks passed for `api/main.py`, `api/telegram_bot.py`, and `scripts/build_content.py`.
-- The full Playwright run used `E2E_PORT=18034` and a temporary SQLite database: `npm.cmd run test:e2e -- --reporter=line` passed all 33 tests. This included all five axe scenarios, which found no critical or serious violations; the queued-question case reached axe analysis. E2E uses the API app as its web server, offline integrations, a test-only helper token, and a temporary database.
-- A direct browser smoke run on the isolated app verified an Amharic course answer and source link, a consented tutor request, a localized tutor-ticket selector, and ticket persistence with the localized label after reload.
-- `docker compose config --quiet` completed successfully. `docker info` could not connect to `npipe:////./pipe/dockerDesktopLinuxEngine` because the Docker Desktop Linux engine pipe was missing; no container runtime check passed.
-- The Slow 3G script was attempted against `demo/blank.html` on a reachable local API server on 2026-11-16. PowerShell rejected the script with `PSSecurityException` because script execution is disabled; Lighthouse did not run and no load/FCP measurement is claimed.
+- `npm.cmd test` passed all 37 JavaScript tests; `python -m pytest -q` passed all 112 Python tests with one Starlette/httpx deprecation warning. Python AST syntax checks passed for `api/main.py`, `api/telegram_bot.py`, `scripts/build_content.py`, and `tests/test_localization.py`.
+- The full Playwright run used `E2E_PORT=18025`, a temporary SQLite database, and offline integrations: **39 passed**, including all five axe scenarios with no critical or serious violations. The queued-question axe case reached axe analysis. The helper-inbox ticket flow and the API Docs/OpenAPI rendering regression both passed.
+- Browser QA on the isolated Compose stack verified `/demo/blank.html` and its proxied API on port `18040`, and the Helper, Docs, and OpenAPI routes on port `18041`. The learner web port correctly returns 404 for `/helper` and `/docs`; those routes belong to the API port. Helper ticket creation returned 201, the learner received a ticket ID/status, and the test ticket was deleted using the learner-data flow. A course question returned HTTP 200 with a source link; navigating it returned HTTP 200 and displayed the cited section.
+- `docker compose config --quiet` passed. The isolated `track3-qa` web and API containers were running during the HTTP smoke checks. This verifies the current Compose runtime routes, not a clean-machine startup or production deployment.
+- The latest `scripts/measure-slow3g.ps1` run targeted `http://localhost:18040/demo/blank.html` on 2026-11-16. Lighthouse simulated 400 ms RTT, 400 Kbps throughput, and 4x CPU slowdown; observed load was **76 ms**, First Contentful Paint was **153 ms**, and performance score was **0.81**. This is a local simulated result, not a deployed-network measurement.
+- The browser test checked that JobPosting JSON-LD matches rendered listing data. The graph omits guide example fields `datePosted` and `employmentType` and uses an unstructured place name instead of a postal address, so full Schema.org completeness is not claimed.
 - The browser test checked that JobPosting JSON-LD matches rendered listing data. The graph omits guide example fields `datePosted` and `employmentType` and uses an unstructured place name instead of a postal address, so full Schema.org completeness is not claimed.
 
 ## Accessibility and privacy notes
@@ -363,17 +372,17 @@ The component currently has locale packs for English, Amharic, Tigrinya, Afaan O
 
 ## Performance, costs, and libraries
 
-- **Bundle size:** Built with `npm.cmd run build:module`; measured by `npm.cmd run check:module-size` as **20.63 KB gzipped (21,122 bytes)** on 2026-11-16. This is the generated `module/db-assistant.min.js` bundle.
-- **Slow 3G:** Not measured. On 2026-11-16, the local API server was reachable, but PowerShell blocked `scripts/measure-slow3g.ps1` with `PSSecurityException` because script execution is disabled. Run the script in an environment that permits it; then record observed load time, First Contentful Paint, method, and date.
+- **Bundle size:** Built with `npm.cmd run build:module`; measured by `npm.cmd run check:module-size` as **21.22 KB gzipped (21,729 bytes)** on 2026-11-16. This is the generated `module/db-assistant.min.js` bundle.
+- **Slow 3G:** Measured on 2026-11-16 by `scripts/measure-slow3g.ps1` against `http://localhost:18040/demo/blank.html` using Lighthouse simulated throttling (`400 ms` RTT, `400 Kbps` throughput, `4x` CPU slowdown): observed load **76 ms**, First Contentful Paint **153 ms**, performance score **0.81**. This is a local simulated result, not a deployed-network measurement.
 - **Rough cost for 3,000 learners:** With an institution-provided host, local open-source inference, and external SMS/AI disabled, the software/API subscription cost is approximately **$0 per month**. This excludes the host's hardware, electricity, internet, operations, and any optional paid messaging. No load test or concurrency profile for 3,000 learners has been completed, so infrastructure cost and capacity need a measured deployment profile before launch.
 - **Direct runtime dependencies and licenses:** FastAPI (MIT), Uvicorn (BSD-3-Clause), cryptography (Apache-2.0 OR BSD-3-Clause), HTTPX (BSD-3-Clause), and ruamel.yaml (MIT). Browser/test tooling: `@axe-core/playwright` (MPL-2.0), `@playwright/test` (Apache-2.0), and Terser (BSD-2-Clause). The lock files identify exact versions; review transitive package, base-image, and any separately provisioned speech-model licenses before redistribution.
 
 ## Current completion status
 
 - **Implemented:** Track 3 assistant and helper flows, career/job content, versioned API/OpenAPI, backend voice guide and local command processing, consented/idempotent tutor voice sends, local offline queues, and a blank-host embed demo. All five automated axe scenarios passed with no critical or serious violations; this is not a human accessibility gate. JobPosting JSON-LD matches rendered listing data in the browser test, but its full schema completeness is unverified; treat Level 3 as partial.
-- **Not yet evidenced:** Co-designer accessibility gate, actual 200% browser zoom and assistive-technology testing, physical-device voice/model coverage, fluent-speaker review of all locales, screen-share interoperability on real networks, Docker runtime/clean-machine startup, Slow 3G measurement, and 3,000-learner load/cost validation. The Compose file parses successfully, but the Docker daemon was unavailable for a runtime check.
+- **Not yet evidenced:** Co-designer accessibility gate, actual 200% browser zoom and assistive-technology testing, physical-device voice/model coverage, fluent-speaker review of all locales, screen-share interoperability on real networks, clean-machine Compose startup, and 3,000-learner load/cost validation. The current isolated Compose runtime and routes were smoke-tested; this is not production or clean-machine validation.
 - **Voice models:** No Vosk/Piper model files are bundled or installed in this checkout. Text transcript mode works without them; raw-audio transcription and generated guide audio require local models and FFmpeg.
-- **Team input still required:** Team/co-designer identifiers, agreed main-task sentence, exact ALX-selected open-source license, co-designer test record, model choices/licenses, and actual performance/cost measurements.
+- **Team input still required:** Team/co-designer identifiers, agreed main-task sentence, exact ALX-selected open-source license, co-designer test record, model choices/licenses, and measured 3,000-learner capacity/cost evidence.
 
 ## License
 

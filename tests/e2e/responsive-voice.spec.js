@@ -138,6 +138,81 @@ test("speech recognition fills the question for review without sending it", asyn
   }
 });
 
+test("microphone permission denial is explicit and does not request access twice", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__microphoneRequests = 0;
+    class DeniedSpeechRecognition {
+      start() {
+        setTimeout(() => this.onerror?.({ error: "not-allowed" }), 0);
+      }
+      stop() {}
+    }
+    Object.defineProperty(window, "SpeechRecognition", { value: DeniedSpeechRecognition, configurable: true });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: async () => {
+          window.__microphoneRequests++;
+          throw new DOMException("Permission denied", "NotAllowedError");
+        }
+      }
+    });
+  });
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("lang", "en"));
+  await assistant.locator("#launcher").click();
+  await assistant.locator("#microphone").click();
+
+  await expect(assistant.locator("#voice-status")).toContainText("Microphone access was not allowed");
+  expect(await page.evaluate(() => window.__microphoneRequests)).toBe(0);
+  await expect(assistant.locator("#microphone")).toHaveAttribute("aria-pressed", "false");
+  await expect(assistant.locator("#messages .message-user")).toHaveCount(0);
+});
+
+test("spoken task records and reports unavailable offline transcription clearly", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__recordingStarts = 0;
+    window.__recordingStops = 0;
+    class FakeMediaRecorder {
+      constructor() { this.handlers = {}; this.state = "inactive"; this.mimeType = "audio/webm"; }
+      addEventListener(name, callback) { this.handlers[name] = callback; }
+      start() { this.state = "recording"; window.__recordingStarts++; }
+      stop() {
+        this.state = "inactive";
+        window.__recordingStops++;
+        this.handlers.dataavailable?.({ data: new Blob(["voice-task-test"], { type: this.mimeType }) });
+        this.handlers.stop?.();
+      }
+    }
+    Object.defineProperty(window, "MediaRecorder", { value: FakeMediaRecorder, configurable: true });
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) }
+    });
+  });
+  await page.goto("/demo/blank.html");
+  const assistant = page.locator("db-assistant");
+  await expect(assistant.locator("#launcher")).toBeEnabled();
+  await assistant.evaluate((element) => element.setAttribute("lang", "en"));
+  await assistant.locator("#launcher").click();
+  await assistant.locator("#voice-command").click();
+  await expect(assistant.locator("#stop-voice")).toBeVisible();
+  expect(await page.evaluate(() => window.__recordingStarts)).toBe(1);
+
+  const commandResponse = page.waitForResponse((response) =>
+    response.request().method() === "POST" &&
+    new URL(response.url()).pathname === "/api/v1/voice/commands"
+  );
+  await assistant.locator("#stop-voice").click();
+  expect(await page.evaluate(() => window.__recordingStops)).toBe(1);
+  const response = await commandResponse;
+  expect(response.status()).toBe(503);
+  expect((await response.json()).detail).toContain("not configured");
+  await expect(assistant.locator("#voice-status")).toContainText("Offline speech transcription is unavailable");
+});
+
 test("spoken task sends a reviewed tutor draft without a button and reuses its idempotency key", async ({ page }) => {
   const transcripts = ["ask a tutor about lesson access", "ask a tutor about lesson access", "send it"];
   const voiceCalls = [];
@@ -231,7 +306,12 @@ test("voice guide is shown as text and spoken, and offline voice questions sync 
     Object.defineProperty(window, "MediaRecorder", { value: FakeMediaRecorder, configurable: true });
     Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }) }, configurable: true });
     Object.defineProperty(window, "SpeechSynthesisUtterance", { value: class { constructor(text) { this.text = text; } }, configurable: true });
-    Object.defineProperty(window, "speechSynthesis", { value: { getVoices: () => [{ lang: "en-US" }], cancel() {}, speak() {} }, configurable: true });
+    window.__spokenGuide = [];
+    Object.defineProperty(window, "speechSynthesis", { value: {
+      getVoices: () => [{ lang: "en-US" }],
+      cancel() {},
+      speak(utterance) { window.__spokenGuide.push(utterance.text); }
+    }, configurable: true });
   });
   let syncCalls = 0;
   await page.route("**/api/v1/voice/guide?**", (route) => route.fulfill({ json: {
@@ -250,8 +330,10 @@ test("voice guide is shown as text and spoken, and offline voice questions sync 
   await expect(assistant.locator("#launcher")).toBeEnabled();
   await assistant.evaluate((element) => element.setAttribute("lang", "en"));
   await assistant.locator("#launcher").click();
+  expect(await page.evaluate(() => window.__spokenGuide)).toEqual([]);
   await assistant.locator("#voice-guide").click();
   await expect(assistant.locator("#messages")).toContainText("Ask a lesson question.");
+  expect(await page.evaluate(() => window.__spokenGuide)).toEqual(["Ask a lesson question. Review the answer."]);
 
   await context.setOffline(true);
   await assistant.locator("#voice-command").click();
